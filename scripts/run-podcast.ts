@@ -178,7 +178,7 @@ async function fetchLatestArticle(category: string): Promise<Article> {
     id: row.id,
     title: row.title,
     excerpt: row.excerpt ?? '',
-    content: content || row.excerpt ?? row.title,
+    content: content || (row.excerpt ?? row.title),
     category: row.category,
   };
 }

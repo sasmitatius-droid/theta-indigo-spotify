@@ -88,6 +88,17 @@ export interface TtsResult {
  */
 const VOICES = ['id-ID-ArdiNeural', 'id-ID-GadisNeural'] as const;
 
+function streamToBuffer(readable: import('stream').Readable): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    readable.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    const done = () => resolve(Buffer.concat(chunks));
+    readable.once('end', done);
+    readable.once('close', done);
+    readable.on('error', (err) => reject(err));
+  });
+}
+
 async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
   const tts = new MsEdgeTTS();
   await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
@@ -110,10 +121,17 @@ async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
   const buffers: Buffer[] = [];
   for (const chunk of chunks) {
     if (!chunk) continue;
-    const { audioBuffer } = await tts.toBuffer(chunk);
+    const readable = tts.toStream(chunk);
+    const audioBuffer = await streamToBuffer(readable);
     if (audioBuffer && audioBuffer.length > 100) {
       buffers.push(audioBuffer);
     }
+  }
+
+  try {
+    tts.close();
+  } catch {
+    // Ignore close errors
   }
 
   if (buffers.length === 0) {
@@ -123,9 +141,25 @@ async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
   return Buffer.concat(buffers);
 }
 
+import * as googleTTS from 'google-tts-api';
+
+async function ttsWithGoogle(text: string): Promise<Buffer> {
+  // Split text into chunks ≤ 200 chars for Google Translate TTS API
+  const base64List = await googleTTS.getAllAudioBase64(text, {
+    lang: 'id',
+    slow: false,
+    host: 'https://translate.google.com',
+    timeout: 15000,
+    splitPunct: '.,!?',
+  });
+
+  const buffers = base64List.map((item) => Buffer.from(item.base64, 'base64'));
+  return Buffer.concat(buffers);
+}
+
 /**
- * Convert article text to an MP3 buffer using Microsoft Edge TTS.
- * Tries primary voice first, then falls back to secondary voice.
+ * Convert article text to an MP3 buffer using TTS.
+ * Tries Edge TTS voices first, then Google TTS as reliable fallback.
  */
 export async function textToMp3(
   title: string,
@@ -137,26 +171,48 @@ export async function textToMp3(
 
   let lastErr: unknown;
 
+  // 1. Try Edge TTS voices first
   for (const voice of VOICES) {
     try {
-      console.log(`🔊 TTS attempt with voice: ${voice}`);
+      console.log(`🔊 TTS attempt with Edge TTS voice: ${voice}`);
       const buffer = await ttsWithVoice(script, voice);
 
       if (buffer.length < 1000) {
-        throw new Error(`Audio buffer too small (${buffer.length} bytes), likely empty`);
+        throw new Error(`Audio buffer too small (${buffer.length} bytes)`);
       }
 
       console.log(
-        `✅ TTS success: ${(buffer.length / 1024).toFixed(0)} KB, ` +
-        `~${formatDuration(durationSec)} (voice: ${voice})`
+        `✅ TTS success (Edge TTS ${voice}): ${(buffer.length / 1024).toFixed(0)} KB, ` +
+        `~${formatDuration(durationSec)}`
       );
 
       return { buffer, durationSec, script };
     } catch (err) {
       lastErr = err;
-      console.warn(`⚠️  Voice ${voice} failed:`, (err as Error).message);
+      const errMsg = typeof err === 'object' ? JSON.stringify(err) : String(err);
+      console.warn(`⚠️  Edge TTS voice ${voice} failed: ${errMsg}`);
     }
   }
 
-  throw new Error(`All TTS voices failed. Last error: ${(lastErr as Error)?.message}`);
+  // 2. Fallback to Google TTS
+  try {
+    console.log(`🔊 Fallback attempt with Google TTS (Indonesian)...`);
+    const buffer = await ttsWithGoogle(script);
+
+    if (buffer.length < 1000) {
+      throw new Error(`Google TTS audio buffer too small (${buffer.length} bytes)`);
+    }
+
+    console.log(
+      `✅ TTS success (Google TTS id): ${(buffer.length / 1024).toFixed(0)} KB, ` +
+      `~${formatDuration(durationSec)}`
+    );
+
+    return { buffer, durationSec, script };
+  } catch (gErr) {
+    console.warn(`⚠️  Google TTS failed:`, (gErr as Error)?.message || gErr);
+  }
+
+  const finalErr = typeof lastErr === 'object' ? JSON.stringify(lastErr) : String(lastErr);
+  throw new Error(`All TTS engines failed. Last error: ${finalErr}`);
 }
