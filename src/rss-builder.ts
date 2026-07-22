@@ -34,6 +34,8 @@ function toRfc2822(iso: string): string {
   return new Date(iso).toUTCString();
 }
 
+import { formatDuration } from './tts-service';
+
 function buildItem(ep: PodcastEpisode): string {
   return `
     <item>
@@ -47,7 +49,7 @@ function buildItem(ep: PodcastEpisode): string {
         type="audio/mpeg"/>
       <guid isPermaLink="false">theta-indigo-ep-${xmlEscape(ep.id)}</guid>
       <pubDate>${toRfc2822(ep.publishedAt)}</pubDate>
-      <itunes:duration>${ep.durationSec}</itunes:duration>
+      <itunes:duration>${formatDuration(ep.durationSec)}</itunes:duration>
       <itunes:explicit>no</itunes:explicit>
       <itunes:episodeType>full</itunes:episodeType>
       <itunes:subtitle>${xmlEscape(ep.category)}</itunes:subtitle>
