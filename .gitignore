@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.local
+*.json.bak
+
+# Firebase service account (use GitHub Secrets!)
+*-firebase-adminsdk-*.json
+firebase-service-account.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
