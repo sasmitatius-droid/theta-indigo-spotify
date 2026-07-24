@@ -342,31 +342,38 @@ async function uploadToYouTube(filePath, title, description, tags) {
   const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
 
   console.log('📤 Mengunggah video ke YouTube...');
-  const res = await youtube.videos.insert({
-    part: ['snippet', 'status'],
-    requestBody: {
-      snippet: {
-        title: title.slice(0, 100),
-        description: description.slice(0, 5000),
-        tags: tags.slice(0, 15),
-        categoryId: '22',
-        defaultLanguage: 'id',
-        defaultAudioLanguage: 'id',
+  try {
+    const res = await youtube.videos.insert({
+      part: ['snippet', 'status'],
+      requestBody: {
+        snippet: {
+          title: title.slice(0, 100),
+          description: description.slice(0, 5000),
+          tags: tags.slice(0, 15),
+          categoryId: '22',
+          defaultLanguage: 'id',
+          defaultAudioLanguage: 'id',
+        },
+        status: {
+          privacyStatus: 'public',
+          embeddable: true,
+          selfDeclaredMadeForKids: false,
+        },
       },
-      status: {
-        privacyStatus: 'public',
-        embeddable: true,
+      media: {
+        body: fs.createReadStream(filePath),
       },
-    },
-    media: {
-      body: fs.createReadStream(filePath),
-    },
-  });
+    });
 
-  const videoId = res.data.id;
-  const youtubeUrl = `https://youtu.be/${videoId}`;
-  console.log(`🎉 Berhasil mengunggah video ke YouTube: ${youtubeUrl}`);
-  return { videoId, youtubeUrl };
+    const videoId = res.data.id;
+    const youtubeUrl = `https://youtu.be/${videoId}`;
+    console.log(`🎉 Berhasil mengunggah video ke YouTube: ${youtubeUrl}`);
+    return { videoId, youtubeUrl };
+  } catch (ytErr) {
+    const errDetails = ytErr.response?.data?.error || ytErr.message || ytErr;
+    console.error('❌ Gagal mengunggah video ke YouTube Data API:', JSON.stringify(errDetails, null, 2));
+    throw new Error(`YouTube API Error: ${typeof errDetails === 'object' ? JSON.stringify(errDetails) : errDetails}`);
+  }
 }
 
 // Helper: Share Video ke Facebook Page
