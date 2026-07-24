@@ -29,11 +29,12 @@ function translateCategoryToEnglish(cat: string): string {
   return map[cat] || cat || 'Spirituality';
 }
 
-function translateTitleToEnglish(text: string): string {
+// Fallback dictionary translator if AI is unreachable
+function fallbackTranslateTitle(text: string): string {
   if (!text) return 'Spiritual Insight';
   let t = text;
-  // Common phrase replacements for spiritual blog titles
   const replacements: [RegExp, string][] = [
+    [/Bazi: Kunci Mengungkap Rahasia Hidup dan Masa Depan/gi, 'Bazi: Key to Unlocking Secrets of Life and Future'],
     [/Mengenal Lebih Dalam/gi, 'In-Depth Guide to'],
     [/Mengenal/gi, 'Understanding'],
     [/Rahasia/gi, 'The Secrets of'],
@@ -54,6 +55,7 @@ function translateTitleToEnglish(text: string): string {
     [/Langkah/gi, 'Steps for'],
     [/Cara Membuka/gi, 'How to Unlock'],
     [/Cara/gi, 'How to'],
+    [/Kunci Mengungkap/gi, 'Key to Unlocking'],
     [/Kunci Utama/gi, 'Key Principles of'],
     [/Kunci/gi, 'Key to'],
     [/Arti/gi, 'Meaning of'],
@@ -64,9 +66,8 @@ function translateTitleToEnglish(text: string): string {
     [/Penyembuhan/gi, 'Healing'],
     [/Jiwa/gi, 'Soul'],
     [/Batin/gi, 'Inner Spirit'],
-    [/Tahun/gi, 'Year'],
-    [/Bulan/gi, 'Month'],
-    [/Hari/gi, 'Day'],
+    [/Masa Depan/gi, 'the Future'],
+    [/Hidup/gi, 'Life'],
     [/dan/gi, 'and'],
     [/di/gi, 'in'],
     [/untuk/gi, 'for'],
@@ -79,10 +80,11 @@ function translateTitleToEnglish(text: string): string {
   return t;
 }
 
-function translateExcerptToEnglish(text: string): string {
+function fallbackTranslateExcerpt(text: string): string {
   if (!text) return 'Daily spiritual insight and soul energy guidance by Theta Indigo Blueprint.';
   let t = text;
   const replacements: [RegExp, string][] = [
+    [/Bazi adalah sebuah sistem astrologi Tiongkok kuno yang membantu kita memahami diri sendiri dan masa depan\. Dengan mempelajari Bazi, kita dapat mengungkap rahasia hidup dan membuat keputusan yang lebih tepat\./gi, 'Bazi is an ancient Chinese astrological system that helps us understand ourselves and the future. By studying Bazi, we can unlock the secrets of life and make more aligned decisions.'],
     [/Artikel ini membahas/gi, 'This episode explores'],
     [/Temukan bagaimana/gi, 'Discover how'],
     [/Pelajari cara/gi, 'Learn how to'],
@@ -104,22 +106,101 @@ function translateExcerptToEnglish(text: string): string {
   return t;
 }
 
+// AI Translation Batch helper
+async function translateBlogsWithAI(
+  items: { id: string; title: string; excerpt: string }[]
+): Promise<Map<string, { title: string; excerpt: string }>> {
+  const resultMap = new Map<string, { title: string; excerpt: string }>();
+  const apiKey = process.env.GROQ_API_KEY || process.env.GROQ_API_KEY_BACKUP || process.env.OPENROUTER_API_KEY || process.env.DEEPSEEK_API_KEY;
+
+  if (!apiKey || items.length === 0) return resultMap;
+
+  const isGroq = apiKey.startsWith('gsk_') || process.env.GROQ_API_KEY;
+  const url = isGroq
+    ? 'https://api.groq.com/openai/v1/chat/completions'
+    : 'https://openrouter.ai/api/v1/chat/completions';
+  const model = isGroq ? 'llama-3.3-70b-versatile' : 'google/gemini-2.5-flash';
+
+  const prompt = `Translate the following list of Indonesian blog titles and excerpts into natural, fluent English for an English Podcast RSS feed.
+Return HANYA JSON array tanpa markdown/formatting lain, dengan format persis:
+[
+  { "id": "item_id", "title": "English Title", "excerpt": "English Excerpt" }
+]
+
+Daftar Artikel:
+${JSON.stringify(items.map(i => ({ id: i.id, title: i.title, excerpt: i.excerpt })))}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout max
+
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+        ...(isGroq ? {} : { 'HTTP-Referer': 'https://www.indigoblueprint.my.id' }),
+      },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You are a professional translator converting Indonesian spiritual blog content to English JSON.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 2500,
+      }),
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (content) {
+        let clean = content.trim();
+        if (clean.startsWith('```')) {
+          clean = clean.replace(/```(?:json)?/g, '').replace(/```/g, '').trim();
+        }
+        const parsed = JSON.parse(clean);
+        const list = Array.isArray(parsed) ? parsed : parsed.items || parsed.data || [];
+        list.forEach((item: any) => {
+          if (item.id && item.title) {
+            resultMap.set(item.id, { title: item.title, excerpt: item.excerpt || item.title });
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[EN RSS] AI translation failed/timed out, using fallback dictionary:', err);
+  }
+
+  return resultMap;
+}
+
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-en.xml`;
 
   try {
     const blogs = await queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
-      'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 50',
+      'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 30',
       ['published']
     );
+
+    // AI translation in batch (with timeout and fallback)
+    const translatedMap = await translateBlogsWithAI(blogs);
 
     const itemsXml = blogs
       .map((blog) => {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
-        const enTitle = translateTitleToEnglish(blog.title);
-        const enExcerpt = translateExcerptToEnglish(blog.excerpt);
+
+        const aiTrans = translatedMap.get(blog.id);
+        const enTitle = aiTrans?.title || fallbackTranslateTitle(blog.title);
+        const enExcerpt = aiTrans?.excerpt || fallbackTranslateExcerpt(blog.excerpt);
         const enCategory = translateCategoryToEnglish(blog.category);
 
         return `
