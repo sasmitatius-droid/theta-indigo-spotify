@@ -1,0 +1,91 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function authEmail() {
+      return request.auth != null && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && authEmail() in [
+        'tiuss168@gmail.com',
+        'admin@example.com'
+      ];
+    }
+
+    function isAdminUid() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isPanelAdmin() {
+      return isSuperAdmin() || isAdminUid();
+    }
+
+    // Dokumen admin per UID (set di Firebase Console untuk admin utama)
+    match /admins/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isPanelAdmin());
+      allow create, update: if isSuperAdmin()
+        || (isSignedIn() && request.auth.uid == uid && isSuperAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Admin tambahan by email + permissions
+    match /adminUsers/{docId} {
+      allow read: if isSignedIn() && (
+        isPanelAdmin()
+        || resource.data.email == authEmail()
+      );
+      allow create, update, delete: if isPanelAdmin();
+    }
+
+    // Profil pengguna
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isPanelAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || isPanelAdmin();
+      allow delete: if isPanelAdmin();
+    }
+
+    // Paket langganan — publik baca, admin tulis
+    match /packages/{packageId} {
+      allow read: if true;
+      allow create, update, delete: if isPanelAdmin();
+    }
+
+    // Blog — publik baca, admin tulis
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow create, update, delete: if isPanelAdmin();
+    }
+
+    // Settings — admin baca/tulis
+    match /settings/{docId} {
+      allow read: if isPanelAdmin();
+      allow create, update, delete: if isPanelAdmin();
+    }
+
+    // Hasil analisis
+    match /readings/{readingId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isPanelAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    // Transaksi Midtrans — hanya Firebase Admin SDK (server)
+    match /transactions/{orderId} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,237 @@
+Buatkan aplikasi web modern bernama “Theta Indigo Blueprint”.
+
+Konsep aplikasi:
+Aplikasi spiritual modern berbasis AI yang membaca energi, numerologi, chakra, dan jalur kehidupan berdasarkan tanggal lahir pengguna. Output harus terlihat premium, mendalam, personal, modern, mystical, dan futuristik.
+
+STACK WAJIB:
+- Next.js latest
+- React
+- Tailwind CSS
+- Firebase
+- Firestore Database
+- Firebase Authentication
+- Framer Motion
+- Recharts
+- Responsive mobile & desktop
+- Dark mode mystical UI
+- Deploy ready untuk Vercel
+- R2 cloudflare untuk gambar 
+
+FITUR UTAMA:
+
+1. AUTHENTICATION
+- Login Google
+- Login email/password - dengan show password dan autofill
+- Guest mode
+
+2. INPUT USER
+Form input:
+- Nama
+- Tanggal lahir
+- Jam lahir (optional)
+- Gender (optional)
+- Negara/Kota
+- Tujuan spiritual saat ini
+
+3. SPIRITUAL ENGINE
+Buat sistem perhitungan:
+- Life Path Number
+- Soul Number
+- Destiny Number
+- Karmic Lesson
+- Maturity Number
+- Personal Year Number
+
+4. INDIGO CLASSIFICATION
+Buat klasifikasi:
+- Indigo Warrior
+- Indigo Mystic
+- Indigo Healer
+- Indigo Visionary
+- Indigo Creator
+
+Gunakan kombinasi:
+- tanggal lahir
+- angka numerologi
+- pola energi
+
+5. CHAKRA ANALYSIS
+Analisa:
+- Crown Chakra
+- Third Eye
+- Throat
+- Heart
+- Solar Plexus
+- Sacral
+- Root
+
+Tampilkan:
+- persentase energi
+- chakra dominan
+- chakra blocked
+- rekomendasi healing
+
+6. AI SPIRITUAL READING
+Gunakan AI API untuk menghasilkan:
+- pembacaan spiritual mendalam
+- narasi personal
+- emotional insight
+- shadow work
+- life mission
+- energy pattern
+- spiritual awakening phase
+
+Style output:
+- lembut
+- bijaksana
+- mystical modern
+- tidak terlalu agama
+- terasa personal
+
+7. AURA SYSTEM
+Generate:
+- warna aura utama
+- warna aura sekunder
+- arti warna energi
+
+8. LIFE TIMELINE
+Visual timeline:
+- fase awakening
+- fase transformasi
+- fase abundance
+- fase healing
+
+9. AFFIRMATION ENGINE
+Generate afirmasi personal:
+- harian
+- mingguan
+- healing
+- abundance
+- confidence
+
+10. DASHBOARD USER
+Dashboard berisi:
+- hasil blueprint terbaru
+- history reading
+- chakra chart
+- spiritual score
+- energy phase
+- affirmation card
+
+11. PDF REPORT
+Generate PDF premium:
+- cover mystical
+- nama pengguna
+- aura color
+- chakra report
+- spiritual reading lengkap
+- affirmation
+- timeline kehidupan
+
+Report share WhatsApp 
+
+12. ADMIN PANEL
+Admin dapat:
+- mengubah rule numerologi
+- mengubah archetype
+- mengubah prompt AI
+- melihat statistik pengguna
+
+DATABASE STRUCTURE:
+
+Firestore collections:
+- users
+- readings
+- chakra_data
+- numerology_rules
+- indigo_types
+- affirmations
+- ai_prompts
+- spiritual_timeline
+
+UI DESIGN:
+- mystical futuristic
+- warna dominan:
+  - indigo
+  - ungu gelap
+  - biru neon
+  - hitam
+- glowing effect
+- glassmorphism
+- smooth animation
+- sacred geometry background
+- aura gradient
+
+HALAMAN:
+- Landing page
+- Login/Register
+- Dashboard
+- New Reading
+- Reading Result
+- History
+- Chakra Analysis
+- Settings
+- Admin Panel
+
+LANDING PAGE:
+Buat landing page premium dengan:
+- hero section mystical
+- animated particles
+- chakra visual
+- testimonial
+- CTA button glowing
+- modern typography
+
+AI PROMPT SYSTEM:
+Buat sistem prompt dinamis:
+- AI membaca data numerologi
+- AI membuat hasil unik
+- AI tidak menghasilkan template yang sama
+
+RESPONSIVE:
+- Mobile first
+- Tablet
+- Desktop
+
+DESKTOP MODE:
+- dashboard full width
+- split layout
+- animated side panel
+
+MOBILE MODE:
+- bottom navigation
+- swipe card
+- optimized touch UI
+- PWA dengan gambar logo.jpg
+ANIMATION:
+Gunakan Framer Motion:
+- fade
+- glow pulse
+- floating chakra
+- energy animation
+
+SECURITY:
+- Firebase rules
+- protected routes
+- admin role system
+
+EXTRA PREMIUM FEATURES:
+- daily energy prediction
+- moon cycle
+- spiritual compatibility
+- soulmate energy
+- meditation recommendation
+- frequency healing
+
+OUTPUT YANG DIINGINKAN:
+- struktur folder lengkap
+- source code lengkap
+- reusable component
+- firebase setup
+- environment variables
+- clean architecture
+- production ready
+- scalable architecture
+Production langganan gunakan snap shot mitred production
+
+Buat coding profesional seperti aplikasi startup modern premium.

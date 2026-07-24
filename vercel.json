@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "app/api/spiritual-reading/route.ts": {
+      "maxDuration": 25
+    },
+    "app/api/cron/generate-blog/route.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/generate-blog",
+      "schedule": "0 22 * * *"
+    }
+  ]
+}
