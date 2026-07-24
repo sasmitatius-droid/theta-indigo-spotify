@@ -32,119 +32,22 @@ function translateCategoryToEnglish(cat: string): string {
   return map[cat] || cat || 'Spirituality';
 }
 
-function smartTranslateToEnglish(text: string, isTitle = false): string {
-  if (!text) return isTitle ? 'Spiritual Insight' : 'Daily spiritual insight and soul energy guidance by Theta Indigo Blueprint.';
-  let t = text.trim();
-
-  const phraseReplacements: [RegExp, string][] = [
-    [/Menggapai Kedamaian Sejati:\s*Tips Spiritual untuk Hidup Lebih Berkualitas/gi, 'Attaining True Peace: Spiritual Tips for a Fulfilling Life'],
-    [/Menggapai kedamaian sejati dalam hidup memerlukan pemahaman mendalam tentang diri sendiri dan alam semesta\. Berikut beberapa tips spiritual untuk hidup lebih berkualitas dan damai\./gi, 'Attaining true peace in life requires a deep understanding of oneself and the universe. Here are key spiritual tips for living a more peaceful and fulfilling life.'],
-    [/Bazi:\s*Kunci Mengungkap Rahasia Hidup dan Masa Depan/gi, 'Bazi: Key to Unlocking Secrets of Life and Future'],
-    [/Bazi adalah sebuah sistem astrologi Tiongkok kuno yang membantu kita memahami diri sendiri dan masa depan\. Dengan mempelajari Bazi, kita dapat mengungkap rahasia hidup dan membuat keputusan yang lebih tepat\./gi, 'Bazi is an ancient Chinese astrological system that helps us understand ourselves and the future. By studying Bazi, we can unlock the secrets of life and make more aligned decisions.'],
-    [/Mengenal Lebih Dalam/gi, 'In-Depth Guide to'],
-    [/Tips Spiritual untuk/gi, 'Spiritual Tips for'],
-    [/Tips Spiritual/gi, 'Spiritual Tips'],
-    [/Kedamaian Sejati/gi, 'True Peace'],
-    [/Hidup Lebih Berkualitas/gi, 'A More Fulfilling Life'],
-    [/Menggapai kedamaian/gi, 'Attaining peace'],
-    [/Panduan Lengkap/gi, 'Complete Guide to'],
-    [/Panduan Praktis/gi, 'Practical Guide to'],
-    [/Panduan/gi, 'Guide to'],
-    [/Energi Hari Ini/gi, "Today's Energy"],
-    [/Energi Jiwa/gi, 'Soul Energy'],
-    [/Energi Batin/gi, 'Inner Energy'],
-    [/Energi/gi, 'Energy of'],
-    [/Transformasi Jiwa/gi, 'Soul Transformation'],
-    [/Pola Karma/gi, 'Karmic Patterns'],
-    [/Pesan Semesta/gi, 'Messages from the Universe'],
-    [/Pesan Jiwa/gi, 'Soul Message'],
-    [/Pesan/gi, 'Message on'],
-    [/Menemukan Jati Diri/gi, 'Discovering True Self'],
-    [/Menemukan/gi, 'Discovering'],
-    [/Kekuatan Batin/gi, 'Inner Power'],
-    [/Kekuatan/gi, 'The Power of'],
-    [/Kebijaksanaan/gi, 'Wisdom of'],
-    [/Langkah Membuka/gi, 'Steps to Unlocking'],
-    [/Langkah/gi, 'Steps for'],
-    [/Cara Membuka/gi, 'How to Unlock'],
-    [/Cara/gi, 'How to'],
-    [/Kunci Mengungkap/gi, 'Key to Unlocking'],
-    [/Kunci Utama/gi, 'Key Principles of'],
-    [/Kunci/gi, 'Key to'],
-    [/Arti/gi, 'Meaning of'],
-    [/Makna/gi, 'Significance of'],
-    [/Takdir Jiwa/gi, 'Soul Destiny'],
-    [/Takdir/gi, 'Destiny & Soul Path'],
-    [/Pembersihan Chakra/gi, 'Chakra Cleansing'],
-    [/Keseimbangan Energi/gi, 'Energy Balance'],
-    [/Keseimbangan/gi, 'Balance of'],
-    [/Penyembuhan Batin/gi, 'Inner Healing'],
-    [/Penyembuhan/gi, 'Healing'],
-    [/Jiwa Anda/gi, 'Your Soul'],
-    [/Batin Anda/gi, 'Your Inner Spirit'],
-    [/Diri Sendiri/gi, 'Oneself'],
-    [/Alam Semesta/gi, 'The Universe'],
-    [/Masa Depan/gi, 'The Future'],
-    [/Hidup Anda/gi, 'Your Life'],
-    [/Hidup/gi, 'Life'],
-    [/Artikel ini membahas/gi, 'This episode explores'],
-    [/Temukan bagaimana/gi, 'Discover how'],
-    [/Pelajari cara/gi, 'Learn how to'],
-    [/Pahami energi/gi, 'Understand the energy of'],
-    [/Simak wawasan/gi, 'Listen to spiritual insights on'],
-  ];
-
-  for (const [regex, replacement] of phraseReplacements) {
-    t = t.replace(regex, replacement);
+async function translateToEnglish(text: string): Promise<string> {
+  if (!text) return '';
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=id&tl=en&dt=t&q=${encodeURIComponent(text.trim())}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json?.[0])) {
+        const translated = json[0].map((x: any) => x[0]).join('');
+        if (translated && translated.length > 0) return translated;
+      }
+    }
+  } catch (err) {
+    console.warn('Google Translate error:', err);
   }
-
-  const wordReplacements: [RegExp, string][] = [
-    [/\bmenggapai\b/gi, 'attaining'],
-    [/\bkedamaian\b/gi, 'peace'],
-    [/\bsejati\b/gi, 'true'],
-    [/\bberkualitas\b/gi, 'fulfilling'],
-    [/\bmemerlukan\b/gi, 'requires'],
-    [/\bpemahaman\b/gi, 'understanding'],
-    [/\bmendalam\b/gi, 'deep'],
-    [/\btentang\b/gi, 'about'],
-    [/\bberikut\b/gi, 'here are'],
-    [/\bbeberapa\b/gi, 'several'],
-    [/\bdamai\b/gi, 'peaceful'],
-    [/\badalah\b/gi, 'is'],
-    [/\bsebuah\b/gi, 'a'],
-    [/\bsistem\b/gi, 'system'],
-    [/\bastrologi\b/gi, 'astrology'],
-    [/\btiongkok\b/gi, 'chinese'],
-    [/\bkuno\b/gi, 'ancient'],
-    [/\byang\b/gi, 'that'],
-    [/\bmembantu\b/gi, 'helps'],
-    [/\bkita\b/gi, 'us'],
-    [/\bmemahami\b/gi, 'understand'],
-    [/\bdengan\b/gi, 'with'],
-    [/\bmempelajari\b/gi, 'studying'],
-    [/\bdapat\b/gi, 'can'],
-    [/\bmengungkap\b/gi, 'unlock'],
-    [/\brahasia\b/gi, 'secrets'],
-    [/\bmembuat\b/gi, 'make'],
-    [/\bkeputusan\b/gi, 'decisions'],
-    [/\blebih\b/gi, 'more'],
-    [/\btepat\b/gi, 'aligned'],
-    [/\bdan\b/gi, 'and'],
-    [/\bdi\b/gi, 'in'],
-    [/\buntuk\b/gi, 'for'],
-    [/\bdalam\b/gi, 'within'],
-    [/\bserta\b/gi, 'and'],
-  ];
-
-  for (const [regex, replacement] of wordReplacements) {
-    t = t.replace(regex, replacement);
-  }
-
-  if (isTitle && t.length > 0) {
-    t = t.charAt(0).toUpperCase() + t.slice(1);
-  }
-
-  return t;
+  return text;
 }
 
 async function translateBlogsWithAI(
@@ -237,14 +140,14 @@ export async function GET() {
 
     const translatedMap = await translateBlogsWithAI(blogs);
 
-    const itemsXml = blogs
-      .map((blog) => {
+    const itemsXmlArr = await Promise.all(
+      blogs.map(async (blog) => {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
         const aiTrans = translatedMap.get(blog.id);
-        const enTitle = aiTrans?.title || smartTranslateToEnglish(blog.title, true);
-        const enExcerpt = aiTrans?.excerpt || smartTranslateToEnglish(blog.excerpt, false);
+        const enTitle = aiTrans?.title || (await translateToEnglish(blog.title));
+        const enExcerpt = aiTrans?.excerpt || (await translateToEnglish(blog.excerpt));
         const enCategory = translateCategoryToEnglish(blog.category);
 
         const r2Audio = r2AudioMap.enMap.get(blog.id.toLowerCase());
@@ -268,7 +171,9 @@ export async function GET() {
       <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
       })
-      .join('');
+    );
+
+    const itemsXml = itemsXmlArr.join('');
 
     const rssXml = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
