@@ -18,6 +18,8 @@ function escapeXml(unsafe: string): string {
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-id.xml`;
+  const defaultAudioUrl = `${baseUrl}/meditation.mp3`;
+  const defaultAudioLength = '4200213'; // ~4.2 MB mp3 audio file
 
   try {
     const blogs = await queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
@@ -29,17 +31,21 @@ export async function GET() {
       .map((blog) => {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
+
         return `
     <item>
       <title>${escapeXml(blog.title)}</title>
       <link>${articleLink}</link>
       <description>${escapeXml(blog.excerpt || '')}</description>
+      <enclosure url="${defaultAudioUrl}" length="${defaultAudioLength}" type="audio/mpeg" />
       <category>${escapeXml(blog.category || 'Spiritual')}</category>
       <pubDate>${pubDate}</pubDate>
       <guid isPermaLink="true">${articleLink}</guid>
       <itunes:author>Theta Indigo Blueprint</itunes:author>
       <itunes:summary>${escapeXml(blog.excerpt || '')}</itunes:summary>
+      <itunes:duration>05:00</itunes:duration>
       <itunes:explicit>no</itunes:explicit>
+      <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
       })
       .join('');
@@ -54,11 +60,16 @@ export async function GET() {
   <copyright>© ${new Date().getFullYear()} Theta Indigo Blueprint</copyright>
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
+  <itunes:type>episodic</itunes:type>
   <itunes:image href="${baseUrl}/logo.png" />
   <itunes:category text="Religion &amp; Spirituality">
     <itunes:category text="Spirituality" />
   </itunes:category>
   <itunes:author>Theta Indigo Blueprint</itunes:author>
+  <itunes:owner>
+    <itunes:name>Theta Indigo Blueprint</itunes:name>
+    <itunes:email>admin@indigoblueprint.my.id</itunes:email>
+  </itunes:owner>
   <itunes:explicit>no</itunes:explicit>
   ${itemsXml}
 </channel>

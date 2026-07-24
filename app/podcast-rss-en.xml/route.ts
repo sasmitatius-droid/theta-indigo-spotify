@@ -29,7 +29,6 @@ function translateCategoryToEnglish(cat: string): string {
   return map[cat] || cat || 'Spirituality';
 }
 
-// Fallback dictionary translator if AI is unreachable
 function fallbackTranslateTitle(text: string): string {
   if (!text) return 'Spiritual Insight';
   let t = text;
@@ -106,7 +105,6 @@ function fallbackTranslateExcerpt(text: string): string {
   return t;
 }
 
-// AI Translation Batch helper
 async function translateBlogsWithAI(
   items: { id: string; title: string; excerpt: string }[]
 ): Promise<Map<string, { title: string; excerpt: string }>> {
@@ -132,7 +130,7 @@ ${JSON.stringify(items.map(i => ({ id: i.id, title: i.title, excerpt: i.excerpt 
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout max
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -183,6 +181,8 @@ ${JSON.stringify(items.map(i => ({ id: i.id, title: i.title, excerpt: i.excerpt 
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-en.xml`;
+  const defaultAudioUrl = `${baseUrl}/meditation.mp3`;
+  const defaultAudioLength = '4200213'; // ~4.2 MB mp3 audio file
 
   try {
     const blogs = await queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
@@ -190,7 +190,6 @@ export async function GET() {
       ['published']
     );
 
-    // AI translation in batch (with timeout and fallback)
     const translatedMap = await translateBlogsWithAI(blogs);
 
     const itemsXml = blogs
@@ -208,12 +207,15 @@ export async function GET() {
       <title>${escapeXml(enTitle)}</title>
       <link>${articleLink}</link>
       <description>${escapeXml(enExcerpt)}</description>
+      <enclosure url="${defaultAudioUrl}" length="${defaultAudioLength}" type="audio/mpeg" />
       <category>${escapeXml(enCategory)}</category>
       <pubDate>${pubDate}</pubDate>
       <guid isPermaLink="true">${articleLink}</guid>
       <itunes:author>Theta Indigo Blueprint</itunes:author>
       <itunes:summary>${escapeXml(enExcerpt)}</itunes:summary>
+      <itunes:duration>05:00</itunes:duration>
       <itunes:explicit>no</itunes:explicit>
+      <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
       })
       .join('');
@@ -228,11 +230,16 @@ export async function GET() {
   <copyright>© ${new Date().getFullYear()} Theta Indigo Blueprint</copyright>
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
+  <itunes:type>episodic</itunes:type>
   <itunes:image href="${baseUrl}/logo.png" />
   <itunes:category text="Religion &amp; Spirituality">
     <itunes:category text="Spirituality" />
   </itunes:category>
   <itunes:author>Theta Indigo Blueprint</itunes:author>
+  <itunes:owner>
+    <itunes:name>Theta Indigo Blueprint</itunes:name>
+    <itunes:email>admin@indigoblueprint.my.id</itunes:email>
+  </itunes:owner>
   <itunes:explicit>no</itunes:explicit>
   ${itemsXml}
 </channel>
