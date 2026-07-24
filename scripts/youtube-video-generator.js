@@ -16,7 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const { google } = require('googleapis');
 const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const googleTTS = require('google-tts-api');
@@ -235,7 +235,65 @@ async function generateSpeechAudio(script, outputPath) {
   throw new Error('Semua TTS engine gagal menghasilkan audio.');
 }
 
-// Helper: Mix Audio Speech + Meditation Background Music
+// Helper: Cari & Download Audio Podcast dari R2 (podcast/ep-{articleId}-*.mp3)
+// Ambil audio yang sudah dibuat podcast cron — sudah baca full konten artikel
+async function fetchPodcastAudioFromR2(articleId, outputPath) {
+  console.log(`🎧 Mencari audio podcast di Cloudflare R2 untuk artikel: ${articleId}...`);
+  try {
+    // List semua episode podcast untuk articleId ini
+    const listRes = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: `podcast/ep-${articleId}-`,
+      })
+    );
+
+    const objects = listRes.Contents || [];
+    if (objects.length === 0) {
+      console.log('⚠️  Tidak ada audio podcast di R2 untuk artikel ini.');
+      return false;
+    }
+
+    // Ambil yang terbaru (timestamp terbesar di nama file)
+    objects.sort((a, b) => {
+      const tsA = parseInt((a.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
+      const tsB = parseInt((b.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
+      return tsB - tsA; // descending — terbaru dulu
+    });
+
+    const latestKey = objects[0].Key;
+    console.log(`📥 Download audio podcast dari R2: ${latestKey}`);
+
+    const getRes = await s3Client.send(
+      new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: latestKey })
+    );
+
+    if (!getRes.Body) {
+      console.warn('⚠️  Body kosong dari R2.');
+      return false;
+    }
+
+    // Stream → Buffer → File
+    const chunks = [];
+    for await (const chunk of getRes.Body) {
+      chunks.push(Buffer.from(chunk));
+    }
+    const buffer = Buffer.concat(chunks);
+
+    if (buffer.length < 1000) {
+      console.warn('⚠️  File audio podcast terlalu kecil, mungkin corrupt.');
+      return false;
+    }
+
+    fs.writeFileSync(outputPath, buffer);
+    console.log(`✅ Audio podcast berhasil diunduh dari R2! (${(buffer.length / 1024).toFixed(0)} KB) → ${latestKey}`);
+    return true;
+  } catch (err) {
+    console.warn('⚠️  Gagal mengunduh audio podcast dari R2:', err.message || err);
+    return false;
+  }
+}
+
 function mixAudioWithBackgroundMusic(speechPath, musicPath, outputPath) {
   console.log('🎵 Menggabungkan suara TTS dengan musik meditasi...');
   const command = `ffmpeg -y -i "${speechPath}" -i "${musicPath}" -filter_complex "[0:a]volume=1.2[speech];[1:a]volume=0.15[bg];[speech][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map "[aout]" -c:a mp3 -b:a 192k "${outputPath}"`;
@@ -511,8 +569,12 @@ Musik Latar: Royalty-Free Meditation Instrumental
     const tempVideoPath = path.join('/tmp', `video_${article.id}.mp4`);
     const bgMusicPath = path.join(process.cwd(), 'public', 'meditation.mp3');
 
-    // 4. TTS Neural Podcast Engine (MsEdgeTTS id-ID-ArdiNeural / GadisNeural) & Audio Mixing
-    await generateSpeechAudio(narrationScript, tempTtsPath);
+    // 4. Ambil Audio Podcast dari R2 (sudah baca full konten) — fallback ke TTS jika tidak ada
+    const podcastAudioFound = await fetchPodcastAudioFromR2(article.id, tempTtsPath);
+    if (!podcastAudioFound) {
+      console.log('🔄 Fallback: Generate TTS sendiri karena audio podcast tidak ditemukan di R2...');
+      await generateSpeechAudio(narrationScript, tempTtsPath);
+    }
     mixAudioWithBackgroundMusic(tempTtsPath, bgMusicPath, tempMixedAudioPath);
 
     // 5. Unduh Gambar Banner Artikel Resmi & Render Video
