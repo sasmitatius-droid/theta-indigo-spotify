@@ -1,7 +1,7 @@
 /**
  * Script Otomatisasi Video YouTube & Facebook untuk Theta Indigo Blueprint
  * - Mengambil artikel dari Cloudflare D1
- * - Menggunakan TTS Engine Podcast yang sama (MsEdgeTTS id-ID-ArdiNeural / GadisNeural + fallback google-tts)
+ * - Menggunakan TTS Engine Podcast (MsEdgeTTS id-ID-ArdiNeural / GadisNeural + fallback google-tts)
  * - Membaca KESELURUHAN isi artikel (hingga 4000 karakter, durasi 3-8 menit)
  * - Mengunduh Gambar Banner Artikel Resmi (bannerR2Url / API generate-image)
  * - Menggabungkan suara TTS dengan musik latar meditasi (public/meditation.mp3)
@@ -124,15 +124,23 @@ const execEnv = {
   PATH: `${process.env.PATH || ''}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`,
 };
 
-function streamToBuffer(readable) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    readable.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-    const done = () => resolve(Buffer.concat(chunks));
-    readable.once('end', done);
-    readable.once('close', done);
-    readable.on('error', (err) => reject(err));
-  });
+async function streamToBuffer(stream) {
+  if (!stream) return Buffer.alloc(0);
+  if (Buffer.isBuffer(stream)) return stream;
+  if (typeof stream.then === 'function') {
+    const res = await stream;
+    if (Buffer.isBuffer(res)) return res;
+    stream = res;
+  }
+  const chunks = [];
+  try {
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  } catch {
+    return Buffer.alloc(0);
+  }
 }
 
 // MsEdgeTTS - Podcast Engine utama dengan id-ID-ArdiNeural / id-ID-GadisNeural
@@ -156,10 +164,14 @@ async function ttsWithEdgeVoice(text, voice = 'id-ID-ArdiNeural') {
   const buffers = [];
   for (const chunk of chunks) {
     if (!chunk) continue;
-    const readable = tts.toStream(chunk);
-    const audioBuffer = await streamToBuffer(readable);
-    if (audioBuffer && audioBuffer.length > 100) {
-      buffers.push(audioBuffer);
+    try {
+      const stream = tts.toStream(chunk);
+      const audioBuffer = await streamToBuffer(stream);
+      if (audioBuffer && audioBuffer.length > 100) {
+        buffers.push(audioBuffer);
+      }
+    } catch (chunkErr) {
+      console.warn('Chunk processing warning:', chunkErr.message);
     }
   }
 
@@ -225,7 +237,6 @@ async function generateSpeechAudio(script, outputPath) {
 // Helper: Mix Audio Speech + Meditation Background Music
 function mixAudioWithBackgroundMusic(speechPath, musicPath, outputPath) {
   console.log('🎵 Menggabungkan suara TTS dengan musik meditasi...');
-  // Volume TTS 1.2, Volume Musik Meditasi 0.15, durasi disesuaikan dengan TTS
   const command = `ffmpeg -y -i "${speechPath}" -i "${musicPath}" -filter_complex "[0:a]volume=1.2[speech];[1:a]volume=0.15[bg];[speech][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map "[aout]" -c:a mp3 -b:a 192k "${outputPath}"`;
   execSync(command, { env: execEnv });
   console.log(`✅ Mixing audio selesai: ${outputPath}`);
@@ -235,7 +246,6 @@ function mixAudioWithBackgroundMusic(speechPath, musicPath, outputPath) {
 async function prepareBannerImage(article, outputPath) {
   console.log('🖼️ Menyiapkan GAMBAR BANNER ARTIKEL RESMI...');
   
-  // 1. Coba ambil dari bannerR2Url jika ada di database
   if (article.bannerR2Url) {
     try {
       console.log(`📥 Mengunduh banner R2: ${article.bannerR2Url}`);
@@ -251,7 +261,6 @@ async function prepareBannerImage(article, outputPath) {
     }
   }
 
-  // 2. Jika bannerR2Url belum ada, ambil dari API generator banner artikel resmi
   const dynamicBannerUrl = `https://www.indigoblueprint.my.id/api/admin/generate-image?title=${encodeURIComponent(
     article.title
   )}&description=${encodeURIComponent(article.excerpt || '')}&icon=${encodeURIComponent(
@@ -271,7 +280,6 @@ async function prepareBannerImage(article, outputPath) {
     console.warn('⚠️ Gagal mengambil banner dari API generate-image:', err.message);
   }
 
-  // 3. Fallback terakhir: Gunakan logo lokal jika semua koneksi internet banner gagal
   const localLogo = path.join(process.cwd(), 'public', 'logo.png');
   if (fs.existsSync(localLogo)) {
     fs.copyFileSync(localLogo, outputPath);
@@ -284,8 +292,7 @@ async function prepareBannerImage(article, outputPath) {
 // Helper: Render 1080p MP4 Video
 function renderVideo(imagePath, audioPath, outputPath) {
   console.log('🎬 Merender Video 1080p MP4 via FFmpeg...');
-  // Skala ke 1920x1080 dengan padding hitam jika aspect ratio berbeda
-  const command = `ffmpeg -y -loop 1 -i "${imagePath}" -i "${audioPath}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -tune stillimage -c:a copy -pix_fmt yuv420p -shortest "${outputPath}"`;
+  const command = `ffmpeg -y -loop 1 -i "${imagePath}" -i "${audioPath}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-ih)/2:(oh-ih)/2:black" -c:v libx264 -tune stillimage -c:a copy -pix_fmt yuv420p -shortest "${outputPath}"`;
   execSync(command, { env: execEnv });
   console.log(`✅ Video berhasil dirender: ${outputPath}`);
 }
@@ -442,7 +449,7 @@ async function sendTelegramReport(payload) {
 // --- MAIN EXECUTION PIPELINE ---
 async function main() {
   const args = process.argv.slice(2);
-  const requestedId = args.find(a => a.startsWith('--article-id='))?.split('=')[1];
+  const requestedId = args.find(a => a.startsWith('=') ? a.split('=')[1] : null) || args.find(a => a.startsWith('--article-id='))?.split('=')[1];
   const isDryRun = args.includes('--dry-run');
 
   try {
