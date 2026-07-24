@@ -99,23 +99,24 @@ function BlogListContent() {
   const categoriesList = useMemo(() => {
     const counts = new Map<string, number>();
     blogs.forEach((b) => {
+      if (!b.category) return; // skip entri tanpa kategori
       counts.set(b.category, (counts.get(b.category) || 0) + 1);
     });
     return [...counts.entries()]
       .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'id'));
   }, [blogs]);
 
   // Filter based on category, tag, and search query
   const filtered = useMemo(() => {
     return blogs.filter((b) => {
-      const matchCat = !kategoriSlug || slugifyCategory(b.category) === kategoriSlug;
-      const matchTag = !tagParam || (Array.isArray((b as any).tags) && (b as any).tags.some((t: string) => t.toLowerCase() === tagParam.toLowerCase()));
+      const matchCat = !kategoriSlug || slugifyCategory(b.category ?? '') === kategoriSlug;
+      const matchTag = !tagParam || (Array.isArray((b as any).tags) && (b as any).tags.some((t: string) => (t ?? '').toLowerCase() === (tagParam ?? '').toLowerCase()));
       const matchSearch =
         !searchQuery.trim() ||
-        b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.category.toLowerCase().includes(searchQuery.toLowerCase());
+        (b.title ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (b.content ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (b.category ?? '').toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchTag && matchSearch;
     });
   }, [blogs, kategoriSlug, tagParam, searchQuery]);
