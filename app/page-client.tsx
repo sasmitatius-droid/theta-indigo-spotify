@@ -8,6 +8,24 @@ import Link from 'next/link';
 import { BlogNav } from '@/components/blog-nav';
 import { LandingBlogCategories } from '@/components/landing-blog-categories';
 
+const YoutubeIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+  </svg>
+);
+
+const ApplePodcastIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M5.34 0A5.328 5.328 0 0 0 0 5.34v13.32A5.328 5.328 0 0 0 5.34 24h13.32A5.328 5.328 0 0 0 24 18.66V5.34A5.328 5.328 0 0 0 18.66 0zm7.931 4.602a5.64 5.64 0 0 1 4.007 1.657 5.64 5.64 0 0 1 1.657 4.007 5.64 5.64 0 0 1-1.657 4.007 5.64 5.64 0 0 1-4.007 1.657 5.64 5.64 0 0 1-4.007-1.657 5.64 5.64 0 0 1-1.657-4.007 5.64 5.64 0 0 1 1.657-4.007 5.64 5.64 0 0 1 4.007-1.657zm.002 1.428a4.21 4.21 0 0 0-2.987 1.237 4.21 4.21 0 0 0-1.237 2.987 4.21 4.21 0 0 0 1.237 2.987 4.21 4.21 0 0 0 2.987 1.237 4.21 4.21 0 0 0 2.987-1.237 4.21 4.21 0 0 0 1.237-2.987 4.21 4.21 0 0 0-1.237-2.987 4.21 4.21 0 0 0-2.987-1.237zm.016 1.693c.7 0 1.273.573 1.273 1.273 0 .7-.573 1.273-1.273 1.273-.7 0-1.273-.573-1.273-1.273 0-.7.573-1.273 1.273-1.273zm-.016 3.042c.867 0 1.63.407 2.12 1.038l-2.12 4.66-2.12-4.66c.49-.631 1.253-1.038 2.12-1.038zM12 15.09c.555 0 1.09.124 1.57.345l-.867 1.906H11.3L10.43 15.435c.48-.22 1.015-.344 1.57-.344z"/>
+  </svg>
+);
+
+const AmazonIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M13.958 10.09c0 1.232.029 2.256-.591 3.351-.502.891-1.301 1.438-2.186 1.438-1.214 0-1.922-.924-1.922-2.292 0-2.692 2.415-3.182 4.699-3.182v.685zm3.186 7.705c-.209.189-.512.201-.745.076-1.051-.872-1.238-1.276-1.814-2.106-1.733 1.769-2.96 2.299-5.208 2.299-2.658 0-4.726-1.641-4.726-4.925 0-2.565 1.391-4.309 3.37-5.164 1.715-.756 4.11-.891 5.942-1.099v-.41c0-.753.06-1.642-.384-2.294-.385-.577-1.124-.815-1.775-.815-1.205 0-2.277.618-2.54 1.897-.054.285-.261.567-.547.581l-3.065-.333c-.259-.056-.548-.267-.473-.663.704-3.716 4.06-4.838 7.066-4.838 1.537 0 3.547.41 4.758 1.574 1.538 1.436 1.392 3.352 1.392 5.441v4.927c0 1.482.614 2.132 1.192 2.931.204.287.249.632-.011.846-.647.54-1.794 1.537-2.424 2.099l-.009-.009zM20.24 18.75c-2.021 1.49-4.952 2.284-7.475 2.284-3.541 0-6.729-1.31-9.138-3.49-.19-.173-.021-.41.208-.276 2.6 1.513 5.814 2.422 9.131 2.422 2.239 0 4.699-.465 6.963-1.429.342-.145.628.224.311.489zm.887-1.009c-.26-.333-1.722-.157-2.376-.079-.199.024-.229-.15-.051-.277.164-.115.432-.302.617-.418.299-.192.499-.501.732-.762.258-.291.488-.6.69-.927.291-.464.425-.993.425-1.541 0-.713-.318-1.379-.845-1.845-.428-.377-.993-.572-1.58-.572-.643 0-1.266.219-1.762.627-.497.407-.817 1.009-.893 1.649-.034.285-.032.574.01.859.048.318.156.607.319.876l.271.451-.352.026c-.473.035-.929.169-1.345.396-.549.3-.977.767-1.214 1.333-.235.563-.269 1.195-.095 1.78.224.757.791 1.371 1.525 1.656.432.168.896.239 1.358.207z"/>
+  </svg>
+);
+
 const SpotifyIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
     <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.899 4.62-1.02 8.52-.6 11.64 1.32.36.18.48.66.301 1.019zm1.441-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141 C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.242 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.18-1.2-.18-1.38-.72-.18-.6.18-1.2.72-1.38 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
@@ -19,6 +37,7 @@ export default function LandingPage() {
   const [recentBlogs, setRecentBlogs] = useState<any[]>([]);
   const [blogsLoading, setBlogsLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [podcastDropdownOpen, setPodcastDropdownOpen] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -626,27 +645,115 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-gray-200 bg-white/80 px-4 py-8">
-        <div className="max-w-6xl mx-auto flex flex-col gap-4 md:flex-row md:items-center md:justify-between text-sm text-black">
-          <div>
-            <p className="font-semibold text-black">Theta Indigo Blueprint</p>
-            <p className="text-gray-700">Mulai dari demo gratis, lalu aktifkan premium jika Anda membutuhkan akses penuh.</p>
+      <footer className="border-t border-gray-200 bg-white/80 px-4 py-10">
+        <div className="max-w-6xl mx-auto">
+          {/* Top row */}
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between text-sm text-black mb-8">
+            <div className="max-w-sm">
+              <p className="font-bold text-black text-base mb-1">Theta Indigo Blueprint</p>
+              <p className="text-gray-600 text-xs leading-relaxed">Platform analisis spiritual AI: Numerologi, Human Design, Weton & Wuku Jawa, Bazi, dan lebih banyak lagi.</p>
+              {/* YouTube channel link */}
+              <a
+                href="https://www.youtube.com/@thetaindigo"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white font-semibold text-xs transition-all"
+              >
+                <YoutubeIcon className="w-4 h-4" />
+                Theta Indigo YouTube
+              </a>
+            </div>
+            <div className="flex flex-wrap gap-5 text-black items-start">
+              <div className="flex flex-col gap-2">
+                <span className="font-bold text-xs uppercase text-gray-400 tracking-wider">Navigasi</span>
+                <BlogNav className="hover:text-indigo-700" />
+                <Link href="/auth" className="hover:text-indigo-700 transition-colors">Masuk / Daftar</Link>
+                <Link href="/dashboard?tab=premium" className="hover:text-indigo-700 transition-colors text-amber-700 font-semibold">✨ Info Paket Premium</Link>
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="font-bold text-xs uppercase text-gray-400 tracking-wider">YouTube</span>
+                <a href="https://www.youtube.com/@thetaindigo" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-red-600 hover:text-red-700 font-semibold transition-colors">
+                  <YoutubeIcon className="w-4 h-4" />
+                  Channel Utama
+                </a>
+                <a href="https://youtube.com/playlist?list=PLQCtyQ3JEtlk&si=8wKR1xbfVSVUH033" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-red-500 hover:text-red-600 transition-colors">
+                  <YoutubeIcon className="w-4 h-4" />
+                  Playlist (ID)
+                </a>
+                <a href="https://youtube.com/playlist?list=PLD1_q4cvPJlo&si=2QR1ZQqMs0yHyebb" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-red-500 hover:text-red-600 transition-colors">
+                  <YoutubeIcon className="w-4 h-4" />
+                  Playlist (EN)
+                </a>
+              </div>
+              {/* Podcast Dropdown Column */}
+              <div className="flex flex-col gap-2 relative">
+                <span className="font-bold text-xs uppercase text-gray-400 tracking-wider">Podcast</span>
+                <button
+                  id="podcast-dropdown-btn"
+                  type="button"
+                  onClick={() => setPodcastDropdownOpen(!podcastDropdownOpen)}
+                  className="flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 font-bold transition-colors focus:outline-none"
+                >
+                  <SpotifyIcon className="w-4 h-4 text-emerald-600" />
+                  🎙️ Podcast Platform
+                  <span className="ml-1 text-gray-400">{podcastDropdownOpen ? '▲' : '▼'}</span>
+                </button>
+                {podcastDropdownOpen && (
+                  <div
+                    id="podcast-dropdown-menu"
+                    className="absolute bottom-full left-0 mb-2 w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-3 z-50 flex flex-col gap-1"
+                  >
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-gray-400 tracking-wider border-b border-gray-100 mb-1">Spotify</div>
+                    <a href="https://open.spotify.com/show/033TVuqCIEE58bjay32pzm" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-emerald-50 text-sm font-medium text-gray-800 hover:text-emerald-700 transition-colors">
+                      <SpotifyIcon className="w-4 h-4 text-emerald-500 shrink-0" />
+                      Spotify (ID & EN)
+                    </a>
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-gray-400 tracking-wider border-b border-gray-100 mb-1 mt-1">Apple Podcasts</div>
+                    <a href="https://podcasts.apple.com/us/podcast/theta-indigo-podcast-bahasa-indonesia/id6794168863" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-purple-50 text-sm font-medium text-gray-800 hover:text-purple-700 transition-colors">
+                      <ApplePodcastIcon className="w-4 h-4 text-purple-500 shrink-0" />
+                      Apple Podcasts (Bahasa Indonesia)
+                    </a>
+                    <a href="https://podcasts.apple.com/us/podcast/theta-indigo-podcast-english-edition/id6794184827" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-purple-50 text-sm font-medium text-gray-800 hover:text-purple-700 transition-colors">
+                      <ApplePodcastIcon className="w-4 h-4 text-purple-500 shrink-0" />
+                      Apple Podcasts (English)
+                    </a>
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-gray-400 tracking-wider border-b border-gray-100 mb-1 mt-1">Amazon Music</div>
+                    <a href="https://podcasters.amazon.com/podcasts/9e43cfc2-4570-4221-9480-69f89d88672e" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-blue-50 text-sm font-medium text-gray-800 hover:text-blue-700 transition-colors">
+                      <AmazonIcon className="w-4 h-4 text-blue-500 shrink-0" />
+                      Amazon Podcasters
+                    </a>
+                    <a href="https://music.amazon.com/podcasts/9e43cfc2-4570-4221-9480-69f89d88672e" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-blue-50 text-sm font-medium text-gray-800 hover:text-blue-700 transition-colors">
+                      <AmazonIcon className="w-4 h-4 text-blue-500 shrink-0" />
+                      Amazon Music Podcasts
+                    </a>
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-gray-400 tracking-wider border-b border-gray-100 mb-1 mt-1">YouTube Podcast</div>
+                    <a href="https://youtube.com/playlist?list=PLQCtyQ3JEtlk&si=8wKR1xbfVSVUH033" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-red-50 text-sm font-medium text-gray-800 hover:text-red-700 transition-colors">
+                      <YoutubeIcon className="w-4 h-4 text-red-500 shrink-0" />
+                      YouTube Podcast (Indonesia)
+                    </a>
+                    <a href="https://youtube.com/playlist?list=PLD1_q4cvPJlo&si=2QR1ZQqMs0yHyebb" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-red-50 text-sm font-medium text-gray-800 hover:text-red-700 transition-colors">
+                      <YoutubeIcon className="w-4 h-4 text-red-500 shrink-0" />
+                      YouTube Podcast (English)
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-4 text-black items-center">
-            <BlogNav className="hover:text-indigo-700" />
-            <a
-              href="https://open.spotify.com/show/033TVuqCIEE58bjay32pzm"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-emerald-700 hover:text-emerald-800 font-bold transition-colors flex items-center gap-1.5"
-            >
-              <SpotifyIcon className="w-4 h-4 text-emerald-600" />
-              Podcast Spotify
-            </a>
-            <Link href="/auth" className="hover:text-indigo-700 transition-colors">Start</Link>
-            <Link href="/dashboard?tab=premium" className="hover:text-indigo-700 transition-colors">Info Paket</Link>
-            <Link href="/terms" className="hover:text-indigo-700 transition-colors">Ketentuan Berlaku</Link>
-            <Link href="/privacy" className="hover:text-indigo-700 transition-colors">Privasi</Link>
+          {/* Bottom bar */}
+          <div className="border-t border-gray-100 pt-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500">
+            <span>© {new Date().getFullYear()} Theta Indigo Blueprint. All rights reserved.</span>
+            <div className="flex gap-4">
+              <Link href="/terms" className="hover:text-indigo-700 transition-colors">Ketentuan Berlaku</Link>
+              <Link href="/privacy" className="hover:text-indigo-700 transition-colors">Privasi</Link>
+            </div>
           </div>
         </div>
       </footer>

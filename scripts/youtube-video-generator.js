@@ -95,9 +95,12 @@ function stripHtml(html) {
 }
 
 // Helper: Susun Naskah Narasi Lengkap Artikel untuk Podcast
-function prepareNarrationScript(title, excerpt, content) {
+// Membaca: Judul + Isi Artikel Lengkap
+// TIDAK membaca: Excerpt / Deskripsi Banner (sesuai permintaan)
+function prepareNarrationScript(title, content) {
   const cleanContent = stripHtml(content);
 
+  // Batasi isi artikel hingga 4000 karakter agar durasi wajar (3-8 menit)
   const body =
     cleanContent.length > 4000
       ? cleanContent.slice(0, 3980) + '...'
@@ -106,11 +109,9 @@ function prepareNarrationScript(title, excerpt, content) {
   const lines = [
     'Theta Indigo Podcast.',
     '',
-    `${title}.`,
+    `${title}.`,  // Judul artikel dibacakan
     '',
-    excerpt ? `${excerpt}.` : '',
-    '',
-    body,
+    body,          // Isi artikel lengkap (bukan excerpt/banner)
     '',
     'Terima kasih telah mendengarkan Theta Indigo Podcast.',
     'Temukan lebih banyak wawasan spiritual di website kami: indigoblueprint.my.id',
@@ -481,8 +482,8 @@ async function main() {
     const article = articles[0];
     console.log(`📌 Artikel Ditemukan: [${article.id}] "${article.title}"`);
 
-    // 2. Susun Naskah Narasi Lengkap Artikel untuk TTS Podcast & YouTube SEO
-    const narrationScript = prepareNarrationScript(article.title, article.excerpt, article.content);
+    // 2. Susun Naskah Narasi: Judul + Isi Artikel (BUKAN excerpt/banner)
+    const narrationScript = prepareNarrationScript(article.title, article.content);
     
     const youtubeTitle = `${article.title} | Theta Indigo Spiritual Podcast`;
     const youtubeTags = ['Theta Indigo', 'Spiritual', 'Meditasi', 'Wawasan Jiwa', 'Numerologi', 'Weton Jawa', article.category];
