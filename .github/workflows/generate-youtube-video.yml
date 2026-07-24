@@ -2,8 +2,10 @@ name: Auto YouTube Video Generator & Upload Pipeline
 
 on:
   schedule:
-    # Berjalan otomatis setiap hari pukul 09:00 WIB (02:00 UTC)
-    - cron: '0 2 * * *'
+    # Mengikuti jadwal podcast (podcast berjalan 07:00 & 19:00 WIB)
+    # Video dibuat 30 menit setelah podcast selesai upload audio ke R2
+    - cron: '30 0 * * *'   # 07:30 WIB (UTC 00:30) — sesudah podcast pagi
+    - cron: '30 12 * * *'  # 19:30 WIB (UTC 12:30) — sesudah podcast sore
   workflow_dispatch:
     inputs:
       article_id:
