@@ -10,7 +10,7 @@ const url = require('url');
 
 const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID;
 const CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET;
-const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
+const REDIRECT_URI = process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3000/oauth2callback';
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error('❌ Harap tentukan YOUTUBE_CLIENT_ID dan YOUTUBE_CLIENT_SECRET di environment variables!');
