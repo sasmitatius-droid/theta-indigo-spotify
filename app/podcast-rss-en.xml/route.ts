@@ -1,6 +1,7 @@
 import { queryD1 } from '@/lib/cloudflare-db';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function escapeXml(unsafe: string): string {
   return unsafe.replace(/[<>&'"]/g, (c) => {
@@ -182,7 +183,7 @@ export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-en.xml`;
   const defaultAudioUrl = `${baseUrl}/meditation.mp3`;
-  const defaultAudioLength = '4200213'; // ~4.2 MB mp3 audio file
+  const defaultAudioLength = '4200213';
 
   try {
     const blogs = await queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
@@ -248,6 +249,9 @@ export async function GET() {
     return new Response(rssXml, {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     });
   } catch (err: any) {
@@ -258,6 +262,7 @@ export async function GET() {
         status: 500,
         headers: {
           'Content-Type': 'application/xml',
+          'Cache-Control': 'no-cache, no-store',
         },
       }
     );
