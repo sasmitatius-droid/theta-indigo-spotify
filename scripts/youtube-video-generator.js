@@ -1,10 +1,11 @@
 /**
- * Script Otomatisasi Video YouTube untuk Theta Indigo Blueprint
+ * Script Otomatisasi Video YouTube & Facebook untuk Theta Indigo Blueprint
  * - Mengambil artikel dari Cloudflare D1
  * - Membuat TTS Bahasa Indonesia & menggabungkan musik meditasi (public/meditation.mp3)
  * - Merender Video MP4 (1080p) via FFmpeg
  * - Mengunggah ke Cloudflare R2 untuk transit
  * - Mengunggah ke YouTube Data API v3 (OAuth2)
+ * - Membagikan Video YouTube ke Facebook Page
  * - Menghapus video dari R2 secara otomatis setelah berhasil terunggah
  * - Mengirimkan laporan ke Telegram Chat ID
  */
@@ -32,6 +33,9 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const YOUTUBE_CLIENT_ID = process.env.YOUTUBE_CLIENT_ID;
 const YOUTUBE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET;
 const YOUTUBE_REFRESH_TOKEN = process.env.YOUTUBE_REFRESH_TOKEN;
+
+const FACEBOOK_PAGE_ID = process.env.FACEBOOK_PAGE_ID || '1176323298906078';
+const FACEBOOK_PAGE_ACCESS_TOKEN = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
 
 // Inisialisasi S3 Client untuk R2
 const s3Client = new S3Client({
@@ -80,7 +84,6 @@ const execEnv = {
 // Helper: Generate TTS Buffer
 async function generateSpeechAudio(text, outputPath) {
   console.log('🎙️ Menghasilkan audio TTS untuk teks...');
-  // Potong teks menjadi fragmen maks 200 karakter agar google-tts-api tidak error
   const results = await googleTTS.getAllAudioBase64(text, {
     lang: 'id',
     slow: false,
@@ -95,13 +98,11 @@ async function generateSpeechAudio(text, outputPath) {
     tempFiles.push(chunkPath);
   }
 
-  // Gabungkan semua chunk mp3
   const concatListPath = path.join('/tmp', 'concat_list.txt');
   fs.writeFileSync(concatListPath, tempFiles.map(f => `file '${f}'`).join('\n'));
 
   execSync(`ffmpeg -y -f concat -safe 0 -i ${concatListPath} -c copy ${outputPath}`, { env: execEnv });
 
-  // Hapus temporary chunk files
   tempFiles.forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
   fs.existsSync(concatListPath) && fs.unlinkSync(concatListPath);
   console.log(`✅ Audio TTS berhasil disimpan ke ${outputPath}`);
@@ -110,7 +111,6 @@ async function generateSpeechAudio(text, outputPath) {
 // Helper: Mix Audio Speech + Meditation Background Music
 function mixAudioWithBackgroundMusic(speechPath, musicPath, outputPath) {
   console.log('🎵 Menggabungkan suara TTS dengan musik meditasi...');
-  // Volume TTS 1.2, Volume Musik Meditasi 0.15, durasi disesuaikan dengan TTS
   const command = `ffmpeg -y -i "${speechPath}" -i "${musicPath}" -filter_complex "[0:a]volume=1.2[speech];[1:a]volume=0.15[bg];[speech][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map "[aout]" -c:a mp3 -b:a 192k "${outputPath}"`;
   execSync(command, { env: execEnv });
   console.log(`✅ Mixing audio selesai: ${outputPath}`);
@@ -133,7 +133,6 @@ async function prepareBannerImage(article, outputPath) {
     }
   }
 
-  // Fallback: Gunakan logo lokal atau buat gambar dummy jika tidak ada
   const localLogo = path.join(process.cwd(), 'public', 'logo.png');
   if (fs.existsSync(localLogo)) {
     fs.copyFileSync(localLogo, outputPath);
@@ -146,7 +145,6 @@ async function prepareBannerImage(article, outputPath) {
 // Helper: Render 1080p MP4 Video
 function renderVideo(imagePath, audioPath, outputPath) {
   console.log('🎬 Merender Video 1080p MP4 via FFmpeg...');
-  // Skala ke 1920x1080 dengan padding hitam jika aspect ratio berbeda
   const command = `ffmpeg -y -loop 1 -i "${imagePath}" -i "${audioPath}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-ih)/2:(oh-ih)/2:black" -c:v libx264 -tune stillimage -c:a copy -pix_fmt yuv420p -shortest "${outputPath}"`;
   execSync(command, { env: execEnv });
   console.log(`✅ Video berhasil dirender: ${outputPath}`);
@@ -204,12 +202,12 @@ async function uploadToYouTube(filePath, title, description, tags) {
         title: title.slice(0, 100),
         description: description.slice(0, 5000),
         tags: tags.slice(0, 15),
-        categoryId: '22', // People & Blogs
+        categoryId: '22',
         defaultLanguage: 'id',
         defaultAudioLanguage: 'id',
       },
       status: {
-        privacyStatus: 'public', // Publikasi langsung
+        privacyStatus: 'public',
         embeddable: true,
       },
     },
@@ -222,6 +220,41 @@ async function uploadToYouTube(filePath, title, description, tags) {
   const youtubeUrl = `https://youtu.be/${videoId}`;
   console.log(`🎉 Berhasil mengunggah video ke YouTube: ${youtubeUrl}`);
   return { videoId, youtubeUrl };
+}
+
+// Helper: Share Video ke Facebook Page
+async function shareToFacebookPage(title, excerpt, youtubeUrl, articleId) {
+  if (!FACEBOOK_PAGE_ID || !FACEBOOK_PAGE_ACCESS_TOKEN) {
+    console.warn('⚠️ Kredensial Facebook Page (FACEBOOK_PAGE_ID / FACEBOOK_PAGE_ACCESS_TOKEN) tidak ditemukan. Melewati share ke Facebook.');
+    return { success: false, error: 'Facebook credentials missing' };
+  }
+
+  console.log('📘 Membagikan video YouTube ke Facebook Page...');
+  const message = `🎬 VIDEO BARU THETA INDIGO PODCAST 🎬\n\n✨ ${title} ✨\n\n${excerpt}\n\n📺 Tonton video di YouTube:\n${youtubeUrl}\n\n📖 Baca artikel selengkapnya:\nhttps://www.indigoblueprint.my.id/blog/${articleId}`;
+
+  try {
+    const feedUrl = `https://graph.facebook.com/v19.0/${FACEBOOK_PAGE_ID}/feed`;
+    const res = await fetch(feedUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        link: youtubeUrl,
+        access_token: FACEBOOK_PAGE_ACCESS_TOKEN,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.id) {
+      console.log(`✅ Berhasil membagikan video ke Facebook Page (Post ID: ${data.id})`);
+      return { success: true, postId: data.id };
+    }
+    console.warn('⚠️ Gagal membagikan ke Facebook Page:', data);
+    return { success: false, error: data.error?.message || JSON.stringify(data) };
+  } catch (err) {
+    console.error('❌ Error membagikan ke Facebook Page:', err);
+    return { success: false, error: err.message };
+  }
 }
 
 // Helper: Send Telegram Report Notification
@@ -239,6 +272,7 @@ async function sendTelegramReport(payload) {
 <b>Link YouTube:</b> <a href="${payload.youtubeUrl}">${payload.youtubeUrl}</a>
 <b>Kategori:</b> ${payload.category}
 <b>Link Artikel:</b> <a href="https://www.indigoblueprint.my.id/blog/${payload.articleId}">Lihat Artikel</a>
+<b>Facebook Page Share:</b> ${payload.fbStatus}
 <b>Transit Cloudflare R2:</b> Terunggah & Otomatis Dihapus (Cleaned) ✅
 <b>Waktu Pembuatan:</b> ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB
 
@@ -332,7 +366,7 @@ Musik Latar: Royalty-Free Meditation Instrumental
     renderVideo(tempBannerPath, tempMixedAudioPath, tempVideoPath);
 
     if (isDryRun) {
-      console.log('\n🔍 [DRY RUN] Pembuatan video selesai. Melewati upload R2, YouTube, dan Telegram.');
+      console.log('\n🔍 [DRY RUN] Pembuatan video selesai. Melewati upload R2, YouTube, Facebook, dan Telegram.');
       console.log(`Hasil Video: ${tempVideoPath}`);
       return;
     }
@@ -349,15 +383,25 @@ Musik Latar: Royalty-Free Meditation Instrumental
       youtubeTags
     );
 
-    // 8. Hapus dari Cloudflare R2 setelah sukses upload YouTube
+    // 8. Bagikan Video ke Facebook Page
+    let fbStatus = 'Skipped';
+    try {
+      const fbResult = await shareToFacebookPage(article.title, article.excerpt, youtubeUrl, article.id);
+      fbStatus = fbResult.success ? 'Success ✅' : `Failed: ${fbResult.error} ❌`;
+    } catch (fbErr) {
+      fbStatus = `Error: ${fbErr.message} ❌`;
+    }
+
+    // 9. Hapus dari Cloudflare R2 setelah sukses upload YouTube & Facebook
     await deleteFromR2(r2Key);
 
-    // 9. Kirim Telegram Report
+    // 10. Kirim Telegram Report
     await sendTelegramReport({
       title: youtubeTitle,
       youtubeUrl,
       category: article.category,
       articleId: article.id,
+      fbStatus,
     });
 
     // Clean up temporary local files
@@ -366,7 +410,7 @@ Musik Latar: Royalty-Free Meditation Instrumental
     });
 
     console.log('\n======================================================');
-    console.log('✅ ALUR PEMBUATAN & UNGGAH VIDEO YOUTUBE SELESAI SUKSES!');
+    console.log('✅ ALUR PEMBUATAN & UNGGAH VIDEO YOUTUBE & FACEBOOK SELESAI SUKSES!');
     console.log('======================================================\n');
   } catch (err) {
     console.error('\n❌ ERROR DALAM PIPELINE PEMBUATAN VIDEO YOUTUBE:', err);
