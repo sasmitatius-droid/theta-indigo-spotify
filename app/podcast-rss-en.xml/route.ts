@@ -247,7 +247,7 @@ export async function GET() {
         const enExcerpt = aiTrans?.excerpt || smartTranslateToEnglish(blog.excerpt, false);
         const enCategory = translateCategoryToEnglish(blog.category);
 
-        const r2Audio = r2AudioMap.get(blog.id.toLowerCase());
+        const r2Audio = r2AudioMap.enMap.get(blog.id.toLowerCase());
         const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
         const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
         const duration = '03:15';

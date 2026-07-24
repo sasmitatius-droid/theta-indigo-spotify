@@ -21,8 +21,12 @@ export const s3Client = new S3Client({
 export const R2_BUCKET_NAME = bucketName;
 export const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || 'https://pub-3dfac1ebd38a458faff5626cae902ad2.r2.dev').replace(/\/$/, '');
 
-export async function getR2PodcastAudioMap(): Promise<Map<string, { url: string; length: string }>> {
-  const map = new Map<string, { url: string; length: string }>();
+export async function getR2PodcastAudioMap(): Promise<{
+  idMap: Map<string, { url: string; length: string }>;
+  enMap: Map<string, { url: string; length: string }>;
+}> {
+  const idMap = new Map<string, { url: string; length: string }>();
+  const enMap = new Map<string, { url: string; length: string }>();
   try {
     const res = await s3Client.send(
       new ListObjectsV2Command({
@@ -32,18 +36,27 @@ export async function getR2PodcastAudioMap(): Promise<Map<string, { url: string;
     );
     for (const obj of res.Contents || []) {
       if (!obj.Key) continue;
-      const match = obj.Key.match(/ep-(.+)-[0-9]+\.mp3$/i);
-      if (match) {
-        const blogId = match[1].toLowerCase();
+      const enMatch = obj.Key.match(/ep-(.+)-en-[0-9]+\.mp3$/i);
+      if (enMatch) {
+        const blogId = enMatch[1].toLowerCase();
         const url = `${R2_PUBLIC_URL}/${obj.Key}`;
         const length = String(obj.Size || '1922304');
-        map.set(blogId, { url, length });
+        enMap.set(blogId, { url, length });
+        continue;
+      }
+
+      const idMatch = obj.Key.match(/ep-(.+)-[0-9]+\.mp3$/i);
+      if (idMatch) {
+        const blogId = idMatch[1].toLowerCase();
+        const url = `${R2_PUBLIC_URL}/${obj.Key}`;
+        const length = String(obj.Size || '1922304');
+        idMap.set(blogId, { url, length });
       }
     }
   } catch (err) {
     console.warn('Failed to list R2 podcast audio files:', err);
   }
-  return map;
+  return { idMap, enMap };
 }
 
 export async function saveToR2Json(key: string, data: any): Promise<void> {

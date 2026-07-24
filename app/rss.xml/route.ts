@@ -36,7 +36,7 @@ export async function GET() {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
-        const r2Audio = r2AudioMap.get(blog.id.toLowerCase());
+        const r2Audio = r2AudioMap.idMap.get(blog.id.toLowerCase());
         const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
         const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
         const duration = '03:15';
