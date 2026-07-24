@@ -235,10 +235,12 @@ async function generateSpeechAudio(script, outputPath) {
   throw new Error('Semua TTS engine gagal menghasilkan audio.');
 }
 
-// Helper: Cari & Download Audio Podcast dari R2 (podcast/ep-{articleId}-*.mp3)
-// Ambil audio yang sudah dibuat podcast cron — sudah baca full konten artikel
+// Helper: Cari & Download Audio Podcast BAHASA INDONESIA dari R2
+// Format key:  ID  → podcast/ep-{articleId}-{timestamp}.mp3
+//              EN  → podcast/ep-{articleId}-en-{timestamp}.mp3
+// Kita filter hanya key yang TIDAK mengandung '-en-' agar selalu ambil versi Indonesia.
 async function fetchPodcastAudioFromR2(articleId, outputPath) {
-  console.log(`🎧 Mencari audio podcast di Cloudflare R2 untuk artikel: ${articleId}...`);
+  console.log(`🎧 Mencari audio podcast BAHASA INDONESIA di R2 untuk artikel: ${articleId}...`);
   try {
     // List semua episode podcast untuk articleId ini
     const listRes = await s3Client.send(
@@ -248,21 +250,30 @@ async function fetchPodcastAudioFromR2(articleId, outputPath) {
       })
     );
 
-    const objects = listRes.Contents || [];
-    if (objects.length === 0) {
+    const allObjects = listRes.Contents || [];
+    if (allObjects.length === 0) {
       console.log('⚠️  Tidak ada audio podcast di R2 untuk artikel ini.');
       return false;
     }
 
+    // Filter: HANYA ambil file Indonesia (tidak mengandung '-en-' di nama key)
+    const idObjects = allObjects.filter(obj => !obj.Key.includes('-en-'));
+    console.log(`   Total file ditemukan: ${allObjects.length}, versi ID: ${idObjects.length}, versi EN: ${allObjects.length - idObjects.length}`);
+
+    if (idObjects.length === 0) {
+      console.log('⚠️  Tidak ada audio podcast Bahasa Indonesia di R2. Hanya ada versi English.');
+      return false;
+    }
+
     // Ambil yang terbaru (timestamp terbesar di nama file)
-    objects.sort((a, b) => {
+    idObjects.sort((a, b) => {
       const tsA = parseInt((a.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
       const tsB = parseInt((b.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
       return tsB - tsA; // descending — terbaru dulu
     });
 
-    const latestKey = objects[0].Key;
-    console.log(`📥 Download audio podcast dari R2: ${latestKey}`);
+    const latestKey = idObjects[0].Key;
+    console.log(`📥 Download audio podcast ID dari R2: ${latestKey}`);
 
     const getRes = await s3Client.send(
       new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: latestKey })
