@@ -415,7 +415,7 @@ export default function AdminPage() {
           loaded.forEach((b: any) => {
             if (b.category) cats.add(String(b.category));
           });
-          setBlogCategoryOptions([...cats].sort((a, b) => a.localeCompare(b, 'id')));
+          setBlogCategoryOptions(Array.from(cats).sort((a, b) => a.localeCompare(b, 'id')));
         })
         .catch((e) => console.error('blogs:', e));
     } else if (activeTab === 'media-ai' && permissions.manageBlog) {
