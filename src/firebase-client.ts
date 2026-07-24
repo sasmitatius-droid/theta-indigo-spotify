@@ -18,7 +18,18 @@ export function initFirebase(): void {
     );
   }
 
-  const serviceAccount = JSON.parse(raw) as admin.ServiceAccount;
+  let serviceAccount: admin.ServiceAccount;
+  try {
+    serviceAccount = JSON.parse(raw);
+  } catch (parseErr) {
+    try {
+      // Attempt handling raw newlines inside private_key string
+      const sanitized = raw.replace(/\r?\n/g, ' ');
+      serviceAccount = JSON.parse(sanitized);
+    } catch {
+      throw parseErr;
+    }
+  }
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
