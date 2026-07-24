@@ -17,8 +17,10 @@ import { uploadCoverArt, R2_PUBLIC_URL } from '../src/r2-client';
 
 async function main() {
   const candidates = [
+    path.resolve(__dirname, '../assets/logo-gd-spotify.png'),
     path.resolve(__dirname, '../assets/logo-indigo-sp.png'),
     path.resolve(__dirname, '../assets/cover.png'),
+    path.resolve(process.cwd(), 'assets/logo-gd-spotify.png'),
     path.resolve(process.cwd(), 'assets/logo-indigo-sp.png'),
   ];
 
