@@ -18,6 +18,8 @@ function escapeXml(unsafe: string): string {
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/rss.xml`;
+  const defaultAudioUrl = `${baseUrl}/meditation.mp3`;
+  const defaultAudioLength = '4200213';
 
   try {
     const blogs = await queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
@@ -34,39 +36,62 @@ export async function GET() {
       <title>${escapeXml(blog.title)}</title>
       <link>${articleLink}</link>
       <description>${escapeXml(blog.excerpt || '')}</description>
+      <enclosure url="${defaultAudioUrl}" length="${defaultAudioLength}" type="audio/mpeg" />
       <category>${escapeXml(blog.category || 'Umum')}</category>
       <pubDate>${pubDate}</pubDate>
-      <guid>${articleLink}</guid>
+      <guid isPermaLink="true">${articleLink}</guid>
+      <itunes:author>Theta Indigo Blueprint</itunes:author>
+      <itunes:summary>${escapeXml(blog.excerpt || '')}</itunes:summary>
+      <itunes:duration>05:00</itunes:duration>
+      <itunes:explicit>false</itunes:explicit>
+      <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
       })
       .join('');
 
     const rssXml = `<?xml version="1.0" encoding="UTF-8" ?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
 <channel>
   <title>Theta Indigo Blueprint - Lentera Spiritual</title>
   <link>${baseUrl}/blog</link>
   <description>Temukan rahasia numerologi Anda, getaran chakra, wawasan aura, dan artikel bertenaga AI untuk menuntun pertumbuhan batin Anda.</description>
-  <language>id-id</language>
+  <language>id-ID</language>
+  <copyright>© ${new Date().getFullYear()} Theta Indigo Blueprint</copyright>
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
+  <itunes:type>episodic</itunes:type>
+  <itunes:summary>Temukan rahasia numerologi Anda, getaran chakra, wawasan aura, dan artikel bertenaga AI untuk menuntun pertumbuhan batin Anda.</itunes:summary>
+  <itunes:image href="${baseUrl}/logo.png" />
+  <itunes:category text="Religion &amp; Spirituality">
+    <itunes:category text="Spirituality" />
+  </itunes:category>
+  <itunes:author>Theta Indigo Blueprint</itunes:author>
+  <itunes:owner>
+    <itunes:name>Theta Indigo Blueprint</itunes:name>
+    <itunes:email>admin@indigoblueprint.my.id</itunes:email>
+  </itunes:owner>
+  <itunes:explicit>false</itunes:explicit>
   ${itemsXml}
 </channel>
 </rss>`.trim();
 
     return new Response(rssXml, {
       headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
+        'Content-Type': 'application/rss+xml; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     });
   } catch (err: any) {
     console.error('Error generating RSS feed:', err);
     return new Response(
-      `<?xml version="1.5" encoding="UTF-8"?><rss version="2.0"><channel><title>Error</title><description>${err.message}</description></channel></rss>`,
+      `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>Error</title><description>${escapeXml(err.message)}</description></channel></rss>`,
       {
         status: 500,
         headers: {
-          'Content-Type': 'application/xml',
+          'Content-Type': 'application/rss+xml; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store',
         },
       }
     );
