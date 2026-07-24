@@ -1,0 +1,9 @@
+{
+  "collection": "admins",
+  "documentId": "FIREBASE_AUTH_UID_ADMIN",
+  "data": {
+    "email": "tiuss168@gmail.com",
+    "role": "owner",
+    "createdAt": "serverTimestamp"
+  }
+}
