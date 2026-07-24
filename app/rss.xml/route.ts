@@ -76,9 +76,11 @@ export async function GET() {
     <itunes:category text="Spirituality" />
   </itunes:category>
   <itunes:author>Theta Indigo Blueprint</itunes:author>
+  <managingEditor>sasmitatius@gmail.com (Theta Indigo Blueprint)</managingEditor>
+  <webMaster>sasmitatius@gmail.com (Theta Indigo Blueprint)</webMaster>
   <itunes:owner>
     <itunes:name>Theta Indigo Blueprint</itunes:name>
-    <itunes:email>admin@indigoblueprint.my.id</itunes:email>
+    <itunes:email>sasmitatius@gmail.com</itunes:email>
   </itunes:owner>
   <itunes:explicit>false</itunes:explicit>
   ${itemsXml}
