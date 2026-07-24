@@ -45,7 +45,7 @@ export async function GET() {
       <itunes:author>Theta Indigo Blueprint</itunes:author>
       <itunes:summary>${escapeXml(blog.excerpt || '')}</itunes:summary>
       <itunes:duration>05:00</itunes:duration>
-      <itunes:explicit>no</itunes:explicit>
+      <itunes:explicit>false</itunes:explicit>
       <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
       })
@@ -62,6 +62,7 @@ export async function GET() {
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
   <itunes:type>episodic</itunes:type>
+  <itunes:summary>Podcast wawasan spiritual harian tentang Numerologi, Human Design, Wuku &amp; Weton Jawa, Bazi, serta panduan energi jiwa oleh Theta Indigo Blueprint.</itunes:summary>
   <itunes:image href="${baseUrl}/logo.png" />
   <itunes:category text="Religion &amp; Spirituality">
     <itunes:category text="Spirituality" />
@@ -71,14 +72,14 @@ export async function GET() {
     <itunes:name>Theta Indigo Blueprint</itunes:name>
     <itunes:email>admin@indigoblueprint.my.id</itunes:email>
   </itunes:owner>
-  <itunes:explicit>no</itunes:explicit>
+  <itunes:explicit>false</itunes:explicit>
   ${itemsXml}
 </channel>
 </rss>`.trim();
 
     return new Response(rssXml, {
       headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
+        'Content-Type': 'application/rss+xml; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
         'Pragma': 'no-cache',
         'Expires': '0',
@@ -91,7 +92,7 @@ export async function GET() {
       {
         status: 500,
         headers: {
-          'Content-Type': 'application/xml',
+          'Content-Type': 'application/rss+xml; charset=utf-8',
           'Cache-Control': 'no-cache, no-store',
         },
       }

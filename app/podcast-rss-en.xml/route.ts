@@ -31,12 +31,10 @@ function translateCategoryToEnglish(cat: string): string {
   return map[cat] || cat || 'Spirituality';
 }
 
-// Multi-pass comprehensive English translator engine
 function smartTranslateToEnglish(text: string, isTitle = false): string {
   if (!text) return isTitle ? 'Spiritual Insight' : 'Daily spiritual insight and soul energy guidance by Theta Indigo Blueprint.';
   let t = text.trim();
 
-  // 1. Phrase Level Exact & Pattern Replacements
   const phraseReplacements: [RegExp, string][] = [
     [/Menggapai Kedamaian Sejati:\s*Tips Spiritual untuk Hidup Lebih Berkualitas/gi, 'Attaining True Peace: Spiritual Tips for a Fulfilling Life'],
     [/Menggapai kedamaian sejati dalam hidup memerlukan pemahaman mendalam tentang diri sendiri dan alam semesta\. Berikut beberapa tips spiritual untuk hidup lebih berkualitas dan damai\./gi, 'Attaining true peace in life requires a deep understanding of oneself and the universe. Here are key spiritual tips for living a more peaceful and fulfilling life.'],
@@ -99,7 +97,6 @@ function smartTranslateToEnglish(text: string, isTitle = false): string {
     t = t.replace(regex, replacement);
   }
 
-  // 2. Word Level Polish Replacements for any remaining Indonesian words
   const wordReplacements: [RegExp, string][] = [
     [/\bmenggapai\b/gi, 'attaining'],
     [/\bkedamaian\b/gi, 'peace'],
@@ -142,7 +139,6 @@ function smartTranslateToEnglish(text: string, isTitle = false): string {
     t = t.replace(regex, replacement);
   }
 
-  // Capitalize title first letter if needed
   if (isTitle && t.length > 0) {
     t = t.charAt(0).toUpperCase() + t.slice(1);
   }
@@ -150,7 +146,6 @@ function smartTranslateToEnglish(text: string, isTitle = false): string {
   return t;
 }
 
-// AI Translation Batch helper with fast 4s timeout
 async function translateBlogsWithAI(
   items: { id: string; title: string; excerpt: string }[]
 ): Promise<Map<string, { title: string; excerpt: string }>> {
@@ -260,7 +255,7 @@ export async function GET() {
       <itunes:author>Theta Indigo Blueprint</itunes:author>
       <itunes:summary>${escapeXml(enExcerpt)}</itunes:summary>
       <itunes:duration>05:00</itunes:duration>
-      <itunes:explicit>no</itunes:explicit>
+      <itunes:explicit>false</itunes:explicit>
       <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
       })
@@ -277,6 +272,7 @@ export async function GET() {
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
   <itunes:type>episodic</itunes:type>
+  <itunes:summary>Daily spiritual insights podcast covering AI Numerology, Human Design, Javanese Wuku &amp; Weton, Bazi, and Soul Energy Guidance by Theta Indigo Blueprint.</itunes:summary>
   <itunes:image href="${baseUrl}/logo.png" />
   <itunes:category text="Religion &amp; Spirituality">
     <itunes:category text="Spirituality" />
@@ -286,14 +282,14 @@ export async function GET() {
     <itunes:name>Theta Indigo Blueprint</itunes:name>
     <itunes:email>admin@indigoblueprint.my.id</itunes:email>
   </itunes:owner>
-  <itunes:explicit>no</itunes:explicit>
+  <itunes:explicit>false</itunes:explicit>
   ${itemsXml}
 </channel>
 </rss>`.trim();
 
     return new Response(rssXml, {
       headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
+        'Content-Type': 'application/rss+xml; charset=utf-8',
         'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0',
         'Pragma': 'no-cache',
         'Expires': '0',
@@ -306,7 +302,7 @@ export async function GET() {
       {
         status: 500,
         headers: {
-          'Content-Type': 'application/xml',
+          'Content-Type': 'application/rss+xml; charset=utf-8',
           'Cache-Control': 'no-cache, no-store',
         },
       }
