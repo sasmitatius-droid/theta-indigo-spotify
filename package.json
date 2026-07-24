@@ -4,6 +4,10 @@
   "description": "Theta Indigo Podcast automation — RSS + MP3 generator for Spotify",
   "private": true,
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "podcast": "ts-node --project tsconfig.json scripts/run-podcast.ts",
     "podcast:dry": "ts-node --project tsconfig.json scripts/run-podcast.ts --dry-run",
     "setup:cover": "ts-node --project tsconfig.json scripts/upload-cover.ts"
