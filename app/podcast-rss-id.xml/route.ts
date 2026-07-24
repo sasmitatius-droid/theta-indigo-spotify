@@ -16,6 +16,45 @@ function escapeXml(unsafe: string): string {
   });
 }
 
+async function getR2AudioMap(): Promise<Map<string, { url: string; length: string; duration: string }>> {
+  const map = new Map<string, { url: string; length: string; duration: string }>();
+  try {
+    const res = await fetch('https://pub-3dfac1ebd38a458faff5626cae902ad2.r2.dev/podcast/feed.xml', {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const xml = await res.text();
+      const itemMatches = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
+      for (const itemXml of itemMatches) {
+        const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/i);
+        const encMatch = itemXml.match(/<enclosure[\s\S]*?url="([^"]+)"[\s\S]*?length="([^"]+)"/i);
+        const durMatch = itemXml.match(/<itunes:duration>([^<]+)<\/itunes:duration>/i);
+
+        if (encMatch) {
+          const audioUrl = encMatch[1];
+          const audioLength = encMatch[2];
+          const duration = durMatch ? durMatch[1].trim() : '03:00';
+          const audioData = { url: audioUrl, length: audioLength, duration };
+
+          if (titleMatch) {
+            const rawTitle = titleMatch[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+            map.set(rawTitle.toLowerCase(), audioData);
+          }
+
+          const idMatch = audioUrl.match(/ep-([a-z0-9\-]+)-\d+\.mp3/i);
+          if (idMatch) {
+            map.set(idMatch[1].toLowerCase(), audioData);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch R2 podcast feed:', err);
+  }
+  return map;
+}
+
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-id.xml`;
@@ -23,28 +62,36 @@ export async function GET() {
   const defaultAudioLength = '4200213';
 
   try {
-    const blogs = await queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
-      'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 50',
-      ['published']
-    );
+    const [blogs, r2AudioMap] = await Promise.all([
+      queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
+        'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 50',
+        ['published']
+      ),
+      getR2AudioMap(),
+    ]);
 
     const itemsXml = blogs
       .map((blog) => {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
+        const r2Audio = r2AudioMap.get(blog.id.toLowerCase()) || r2AudioMap.get((blog.title || '').toLowerCase());
+        const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
+        const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
+        const duration = r2Audio ? r2Audio.duration : '05:00';
+
         return `
     <item>
       <title>${escapeXml(blog.title)}</title>
       <link>${articleLink}</link>
       <description>${escapeXml(blog.excerpt || '')}</description>
-      <enclosure url="${defaultAudioUrl}" length="${defaultAudioLength}" type="audio/mpeg" />
+      <enclosure url="${audioUrl}" length="${audioLength}" type="audio/mpeg" />
       <category>${escapeXml(blog.category || 'Spiritual')}</category>
       <pubDate>${pubDate}</pubDate>
       <guid isPermaLink="true">${articleLink}</guid>
       <itunes:author>Theta Indigo Blueprint</itunes:author>
       <itunes:summary>${escapeXml(blog.excerpt || '')}</itunes:summary>
-      <itunes:duration>05:00</itunes:duration>
+      <itunes:duration>${duration}</itunes:duration>
       <itunes:explicit>false</itunes:explicit>
       <itunes:image href="${baseUrl}/logo.png" />
     </item>`;
