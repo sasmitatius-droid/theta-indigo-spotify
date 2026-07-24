@@ -1,4 +1,5 @@
 import { queryD1 } from '@/lib/cloudflare-db';
+import { getR2PodcastAudioMap } from '@/lib/r2-client';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -219,45 +220,6 @@ ${JSON.stringify(items.map(i => ({ id: i.id, title: i.title, excerpt: i.excerpt 
   return resultMap;
 }
 
-async function getR2AudioMap(): Promise<Map<string, { url: string; length: string; duration: string }>> {
-  const map = new Map<string, { url: string; length: string; duration: string }>();
-  try {
-    const res = await fetch('https://pub-3dfac1ebd38a458faff5626cae902ad2.r2.dev/podcast/feed.xml', {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const xml = await res.text();
-      const itemMatches = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
-      for (const itemXml of itemMatches) {
-        const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/i);
-        const encMatch = itemXml.match(/<enclosure[\s\S]*?url="([^"]+)"[\s\S]*?length="([^"]+)"/i);
-        const durMatch = itemXml.match(/<itunes:duration>([^<]+)<\/itunes:duration>/i);
-
-        if (encMatch) {
-          const audioUrl = encMatch[1];
-          const audioLength = encMatch[2];
-          const duration = durMatch ? durMatch[1].trim() : '03:00';
-          const audioData = { url: audioUrl, length: audioLength, duration };
-
-          if (titleMatch) {
-            const rawTitle = titleMatch[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            map.set(rawTitle.toLowerCase(), audioData);
-          }
-
-          const idMatch = audioUrl.match(/ep-([a-z0-9\-]+)-\d+\.mp3/i);
-          if (idMatch) {
-            map.set(idMatch[1].toLowerCase(), audioData);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch R2 podcast feed:', err);
-  }
-  return map;
-}
-
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-en.xml`;
@@ -270,7 +232,7 @@ export async function GET() {
         'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 30',
         ['published']
       ),
-      getR2AudioMap(),
+      getR2PodcastAudioMap(),
     ]);
 
     const translatedMap = await translateBlogsWithAI(blogs);
@@ -285,10 +247,10 @@ export async function GET() {
         const enExcerpt = aiTrans?.excerpt || smartTranslateToEnglish(blog.excerpt, false);
         const enCategory = translateCategoryToEnglish(blog.category);
 
-        const r2Audio = r2AudioMap.get(blog.id.toLowerCase()) || r2AudioMap.get((blog.title || '').toLowerCase());
+        const r2Audio = r2AudioMap.get(blog.id.toLowerCase());
         const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
         const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
-        const duration = r2Audio ? r2Audio.duration : '05:00';
+        const duration = '03:15';
 
         return `
     <item>

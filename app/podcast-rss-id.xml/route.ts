@@ -1,4 +1,5 @@
 import { queryD1 } from '@/lib/cloudflare-db';
+import { getR2PodcastAudioMap } from '@/lib/r2-client';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,49 +17,6 @@ function escapeXml(unsafe: string): string {
   });
 }
 
-async function getR2AudioMap(): Promise<{
-  byId: Map<string, { url: string; length: string; duration: string }>;
-  byTitle: Map<string, { url: string; length: string; duration: string }>;
-}> {
-  const byId = new Map<string, { url: string; length: string; duration: string }>();
-  const byTitle = new Map<string, { url: string; length: string; duration: string }>();
-  try {
-    const res = await fetch('https://pub-3dfac1ebd38a458faff5626cae902ad2.r2.dev/podcast/feed.xml', {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const xml = await res.text();
-      const itemMatches = xml.match(/<item>[\s\S]*?<\/item>/gi) || [];
-      for (const itemXml of itemMatches) {
-        const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/i);
-        const encMatch = itemXml.match(/<enclosure[\s\S]*?url="([^"]+)"[\s\S]*?length="([^"]+)"/i);
-        const durMatch = itemXml.match(/<itunes:duration>([^<]+)<\/itunes:duration>/i);
-
-        if (encMatch) {
-          const audioUrl = encMatch[1].trim();
-          const audioLength = encMatch[2].trim();
-          const duration = durMatch ? durMatch[1].trim() : '03:00';
-          const audioData = { url: audioUrl, length: audioLength, duration };
-
-          if (titleMatch) {
-            const rawTitle = titleMatch[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            byTitle.set(rawTitle.toLowerCase(), audioData);
-          }
-
-          const idMatch = audioUrl.match(/ep-(.+)-[0-9]+\.mp3$/i);
-          if (idMatch) {
-            byId.set(idMatch[1].toLowerCase(), audioData);
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch R2 podcast feed:', err);
-  }
-  return { byId, byTitle };
-}
-
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-id.xml`;
@@ -71,7 +29,7 @@ export async function GET() {
         'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 50',
         ['published']
       ),
-      getR2AudioMap(),
+      getR2PodcastAudioMap(),
     ]);
 
     const itemsXml = blogs
@@ -79,10 +37,10 @@ export async function GET() {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
-        const r2Audio = r2AudioMap.byId.get(blog.id.toLowerCase()) || r2AudioMap.byTitle.get((blog.title || '').trim().toLowerCase());
+        const r2Audio = r2AudioMap.get(blog.id.toLowerCase());
         const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
         const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
-        const duration = r2Audio ? r2Audio.duration : '05:00';
+        const duration = '03:15';
 
         return `
     <item>
