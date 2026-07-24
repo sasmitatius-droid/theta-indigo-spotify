@@ -28,43 +28,53 @@ function stripHtml(html: string): string {
 export function prepareNarrationScript(
   title: string,
   excerpt: string,
-  content: string
+  content: string,
+  lang: 'id' | 'en' = 'id'
 ): string {
   const cleanContent = stripHtml(content);
 
-  // Limit content to ~4000 chars to keep episode length manageable
   const body =
     cleanContent.length > 4000
       ? cleanContent.slice(0, 3980) + '...'
       : cleanContent;
 
-  const lines = [
-    `Theta Indigo Podcast.`,
-    '',
-    `${title}.`,
-    '',
-    excerpt ? `${excerpt}` : '',
-    '',
-    body,
-    '',
-    'Terima kasih telah mendengarkan Theta Indigo Podcast.',
-    'Temukan lebih banyak wawasan spiritual di website kami: theta-indigo-blueprint.vercel.app',
-  ];
+  const lines =
+    lang === 'en'
+      ? [
+          'Theta Indigo Podcast.',
+          '',
+          `${title}.`,
+          '',
+          excerpt ? `${excerpt}` : '',
+          '',
+          body,
+          '',
+          'Thank you for listening to Theta Indigo Podcast.',
+          'Discover more spiritual insights at theta-indigo-blueprint.vercel.app',
+        ]
+      : [
+          'Theta Indigo Podcast.',
+          '',
+          `${title}.`,
+          '',
+          excerpt ? `${excerpt}` : '',
+          '',
+          body,
+          '',
+          'Terima kasih telah mendengarkan Theta Indigo Podcast.',
+          'Temukan lebih banyak wawasan spiritual di website kami: theta-indigo-blueprint.vercel.app',
+        ];
 
   return lines.filter((l) => l !== undefined).join('\n').trim();
 }
 
 // ─── Duration Helpers ──────────────────────────────────────────────────────────
 
-/**
- * Estimate duration in seconds based on Indonesian speaking pace (~130 wpm).
- */
 export function estimateDurationSec(text: string): number {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return Math.max(30, Math.ceil((wordCount / 130) * 60));
 }
 
-/** Format seconds as HH:MM:SS or MM:SS. */
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -82,11 +92,8 @@ export interface TtsResult {
   script: string;
 }
 
-/**
- * Primary voice: id-ID-ArdiNeural (male, Indonesian).
- * Fallback voice: id-ID-GadisNeural (female, Indonesian).
- */
-const VOICES = ['id-ID-ArdiNeural', 'id-ID-GadisNeural'] as const;
+const VOICES_ID = ['id-ID-ArdiNeural', 'id-ID-GadisNeural'] as const;
+const VOICES_EN = ['en-US-AnaNeural', 'en-US-JennyNeural', 'en-US-GuyNeural'] as const;
 
 function streamToBuffer(readable: import('stream').Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -103,12 +110,10 @@ async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
   const tts = new MsEdgeTTS();
   await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
 
-  // Split text into chunks ≤ 3000 chars (Edge TTS limit per request)
   const CHUNK_SIZE = 2800;
   const chunks: string[] = [];
   let pos = 0;
   while (pos < text.length) {
-    // Try to break at sentence boundary
     let end = Math.min(pos + CHUNK_SIZE, text.length);
     if (end < text.length) {
       const lastPeriod = text.lastIndexOf('.', end);
@@ -130,9 +135,7 @@ async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
 
   try {
     tts.close();
-  } catch {
-    // Ignore close errors
-  }
+  } catch {}
 
   if (buffers.length === 0) {
     throw new Error('Edge TTS returned empty audio for all chunks');
@@ -143,10 +146,9 @@ async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
 
 import * as googleTTS from 'google-tts-api';
 
-async function ttsWithGoogle(text: string): Promise<Buffer> {
-  // Split text into chunks ≤ 200 chars for Google Translate TTS API
+async function ttsWithGoogle(text: string, lang: 'id' | 'en' = 'id'): Promise<Buffer> {
   const base64List = await googleTTS.getAllAudioBase64(text, {
-    lang: 'id',
+    lang,
     slow: false,
     host: 'https://translate.google.com',
     timeout: 15000,
@@ -157,24 +159,21 @@ async function ttsWithGoogle(text: string): Promise<Buffer> {
   return Buffer.concat(buffers);
 }
 
-/**
- * Convert article text to an MP3 buffer using TTS.
- * Tries Edge TTS voices first, then Google TTS as reliable fallback.
- */
 export async function textToMp3(
   title: string,
   excerpt: string,
-  content: string
+  content: string,
+  lang: 'id' | 'en' = 'id'
 ): Promise<TtsResult> {
-  const script = prepareNarrationScript(title, excerpt, content);
+  const script = prepareNarrationScript(title, excerpt, content, lang);
   const durationSec = estimateDurationSec(script);
 
   let lastErr: unknown;
+  const voices = lang === 'en' ? VOICES_EN : VOICES_ID;
 
-  // 1. Try Edge TTS voices first
-  for (const voice of VOICES) {
+  for (const voice of voices) {
     try {
-      console.log(`🔊 TTS attempt with Edge TTS voice: ${voice}`);
+      console.log(`🔊 TTS attempt with Edge TTS voice (${lang}): ${voice}`);
       const buffer = await ttsWithVoice(script, voice);
 
       if (buffer.length < 1000) {
@@ -190,27 +189,26 @@ export async function textToMp3(
     } catch (err) {
       lastErr = err;
       const errMsg = typeof err === 'object' ? JSON.stringify(err) : String(err);
-      console.warn(`⚠️  Edge TTS voice ${voice} failed: ${errMsg}`);
+      console.warn(`⚠️ Edge TTS voice ${voice} failed: ${errMsg}`);
     }
   }
 
-  // 2. Fallback to Google TTS
   try {
-    console.log(`🔊 Fallback attempt with Google TTS (Indonesian)...`);
-    const buffer = await ttsWithGoogle(script);
+    console.log(`🔊 Fallback attempt with Google TTS (${lang})...`);
+    const buffer = await ttsWithGoogle(script, lang);
 
     if (buffer.length < 1000) {
       throw new Error(`Google TTS audio buffer too small (${buffer.length} bytes)`);
     }
 
     console.log(
-      `✅ TTS success (Google TTS id): ${(buffer.length / 1024).toFixed(0)} KB, ` +
+      `✅ TTS success (Google TTS ${lang}): ${(buffer.length / 1024).toFixed(0)} KB, ` +
       `~${formatDuration(durationSec)}`
     );
 
     return { buffer, durationSec, script };
   } catch (gErr) {
-    console.warn(`⚠️  Google TTS failed:`, (gErr as Error)?.message || gErr);
+    console.warn(`⚠️ Google TTS failed:`, (gErr as Error)?.message || gErr);
   }
 
   const finalErr = typeof lastErr === 'object' ? JSON.stringify(lastErr) : String(lastErr);

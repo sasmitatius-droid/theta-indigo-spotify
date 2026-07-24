@@ -135,12 +135,12 @@ export async function deleteObject(key: string): Promise<void> {
 // ─── Cleanup — 24h Auto-Delete ────────────────────────────────────────────────
 
 /**
- * List all podcast MP3 episodes and delete any older than `olderThanMs` ms.
+ * List all podcast MP3 episodes and delete any older than `olderThanMs` ms (default: 365 days).
  * MP3 keys follow the pattern: podcast/ep-{articleId}-{timestampMs}.mp3
  * Returns list of deleted keys.
  */
 export async function cleanupOldEpisodes(
-  olderThanMs = 24 * 60 * 60 * 1000
+  olderThanMs = 365 * 24 * 60 * 60 * 1000 // Keep episodes for 1 year (365 days)
 ): Promise<string[]> {
   const deleted: string[] = [];
 
