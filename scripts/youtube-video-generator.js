@@ -1,0 +1,377 @@
+/**
+ * Script Otomatisasi Video YouTube untuk Theta Indigo Blueprint
+ * - Mengambil artikel dari Cloudflare D1
+ * - Membuat TTS Bahasa Indonesia & menggabungkan musik meditasi (public/meditation.mp3)
+ * - Merender Video MP4 (1080p) via FFmpeg
+ * - Mengunggah ke Cloudflare R2 untuk transit
+ * - Mengunggah ke YouTube Data API v3 (OAuth2)
+ * - Menghapus video dari R2 secara otomatis setelah berhasil terunggah
+ * - Mengirimkan laporan ke Telegram Chat ID
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { google } = require('googleapis');
+const googleTTS = require('google-tts-api');
+
+// --- Konfigurasi Environment ---
+const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+const CLOUDFLARE_D1_DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID;
+const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+
+const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
+const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || 'theta-indigo';
+
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+const YOUTUBE_CLIENT_ID = process.env.YOUTUBE_CLIENT_ID;
+const YOUTUBE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET;
+const YOUTUBE_REFRESH_TOKEN = process.env.YOUTUBE_REFRESH_TOKEN;
+
+// Inisialisasi S3 Client untuk R2
+const s3Client = new S3Client({
+  region: 'auto',
+  endpoint: `https://${R2_ACCOUNT_ID || 'dd3d0162fefacc8b01a83ca376d06947'}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY_ID || '',
+    secretAccessKey: R2_SECRET_ACCESS_KEY || '',
+  },
+});
+
+// Helper: Query D1 Database
+async function queryD1(sql, params = []) {
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_D1_DATABASE_ID || !CLOUDFLARE_API_TOKEN) {
+    throw new Error('❌ Kredensial Cloudflare D1 tidak lengkap di environment variables.');
+  }
+
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${CLOUDFLARE_D1_DATABASE_ID}/query`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sql, params }),
+  });
+
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(`D1 Query Error: ${JSON.stringify(data.errors || data)}`);
+  }
+  return data.result[0]?.results || [];
+}
+
+// Helper: Bersihkan Teks HTML dari Konten Artikel
+function stripHtml(html) {
+  if (!html) return '';
+  return html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+}
+
+const execEnv = {
+  ...process.env,
+  PATH: `${process.env.PATH || ''}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`,
+};
+
+// Helper: Generate TTS Buffer
+async function generateSpeechAudio(text, outputPath) {
+  console.log('🎙️ Menghasilkan audio TTS untuk teks...');
+  // Potong teks menjadi fragmen maks 200 karakter agar google-tts-api tidak error
+  const results = await googleTTS.getAllAudioBase64(text, {
+    lang: 'id',
+    slow: false,
+    host: 'https://translate.google.com',
+    timeout: 10000,
+  });
+
+  const tempFiles = [];
+  for (let i = 0; i < results.length; i++) {
+    const chunkPath = path.join('/tmp', `tts_chunk_${i}.mp3`);
+    fs.writeFileSync(chunkPath, Buffer.from(results[i].base64, 'base64'));
+    tempFiles.push(chunkPath);
+  }
+
+  // Gabungkan semua chunk mp3
+  const concatListPath = path.join('/tmp', 'concat_list.txt');
+  fs.writeFileSync(concatListPath, tempFiles.map(f => `file '${f}'`).join('\n'));
+
+  execSync(`ffmpeg -y -f concat -safe 0 -i ${concatListPath} -c copy ${outputPath}`, { env: execEnv });
+
+  // Hapus temporary chunk files
+  tempFiles.forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
+  fs.existsSync(concatListPath) && fs.unlinkSync(concatListPath);
+  console.log(`✅ Audio TTS berhasil disimpan ke ${outputPath}`);
+}
+
+// Helper: Mix Audio Speech + Meditation Background Music
+function mixAudioWithBackgroundMusic(speechPath, musicPath, outputPath) {
+  console.log('🎵 Menggabungkan suara TTS dengan musik meditasi...');
+  // Volume TTS 1.2, Volume Musik Meditasi 0.15, durasi disesuaikan dengan TTS
+  const command = `ffmpeg -y -i "${speechPath}" -i "${musicPath}" -filter_complex "[0:a]volume=1.2[speech];[1:a]volume=0.15[bg];[speech][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map "[aout]" -c:a mp3 -b:a 192k "${outputPath}"`;
+  execSync(command, { env: execEnv });
+  console.log(`✅ Mixing audio selesai: ${outputPath}`);
+}
+
+// Helper: Download/Fetch Banner Image
+async function prepareBannerImage(article, outputPath) {
+  console.log('🖼️ Menyiapkan banner artikel...');
+  if (article.bannerR2Url) {
+    try {
+      const res = await fetch(article.bannerR2Url);
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(outputPath, buffer);
+        console.log('✅ Banner berhasil diunduh dari R2 URL.');
+        return;
+      }
+    } catch (err) {
+      console.warn('⚠️ Gagal mengambil bannerR2Url, menggunakan fallback banner.');
+    }
+  }
+
+  // Fallback: Gunakan logo lokal atau buat gambar dummy jika tidak ada
+  const localLogo = path.join(process.cwd(), 'public', 'logo.png');
+  if (fs.existsSync(localLogo)) {
+    fs.copyFileSync(localLogo, outputPath);
+    console.log('✅ Banner fallback menggunakan logo.png.');
+  } else {
+    throw new Error('Banner image tidak ditemukan.');
+  }
+}
+
+// Helper: Render 1080p MP4 Video
+function renderVideo(imagePath, audioPath, outputPath) {
+  console.log('🎬 Merender Video 1080p MP4 via FFmpeg...');
+  // Skala ke 1920x1080 dengan padding hitam jika aspect ratio berbeda
+  const command = `ffmpeg -y -loop 1 -i "${imagePath}" -i "${audioPath}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-ih)/2:(oh-ih)/2:black" -c:v libx264 -tune stillimage -c:a copy -pix_fmt yuv420p -shortest "${outputPath}"`;
+  execSync(command, { env: execEnv });
+  console.log(`✅ Video berhasil dirender: ${outputPath}`);
+}
+
+// Helper: Upload Video ke Cloudflare R2
+async function uploadToR2(filePath, r2Key) {
+  console.log(`☁️ Mengunggah video ke Cloudflare R2 transit (${r2Key})...`);
+  const fileBuffer = fs.readFileSync(filePath);
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: r2Key,
+      Body: fileBuffer,
+      ContentType: 'video/mp4',
+    })
+  );
+  console.log('✅ Video berhasil terunggah ke Cloudflare R2.');
+}
+
+// Helper: Delete Video dari Cloudflare R2
+async function deleteFromR2(r2Key) {
+  console.log(`🗑️ Menghapus video dari Cloudflare R2 (${r2Key})...`);
+  await s3Client.send(
+    new DeleteObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: r2Key,
+    })
+  );
+  console.log('✅ Video di Cloudflare R2 berhasil dihapus (Cleaned).');
+}
+
+// Helper: Upload Video ke YouTube Data API v3
+async function uploadToYouTube(filePath, title, description, tags) {
+  console.log('🚀 Menyiapkan koneksi ke YouTube Data API v3...');
+  if (!YOUTUBE_REFRESH_TOKEN || !YOUTUBE_CLIENT_ID || !YOUTUBE_CLIENT_SECRET) {
+    throw new Error('❌ Kredensial YouTube (YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN) belum lengkap.');
+  }
+
+  const oauth2Client = new google.auth.OAuth2(
+    YOUTUBE_CLIENT_ID,
+    YOUTUBE_CLIENT_SECRET,
+    'http://localhost:3000/oauth2callback'
+  );
+
+  oauth2Client.setCredentials({ refresh_token: YOUTUBE_REFRESH_TOKEN });
+
+  const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+
+  console.log('📤 Mengunggah video ke YouTube...');
+  const res = await youtube.videos.insert({
+    part: ['snippet', 'status'],
+    requestBody: {
+      snippet: {
+        title: title.slice(0, 100),
+        description: description.slice(0, 5000),
+        tags: tags.slice(0, 15),
+        categoryId: '22', // People & Blogs
+        defaultLanguage: 'id',
+        defaultAudioLanguage: 'id',
+      },
+      status: {
+        privacyStatus: 'public', // Publikasi langsung
+        embeddable: true,
+      },
+    },
+    media: {
+      body: fs.createReadStream(filePath),
+    },
+  });
+
+  const videoId = res.data.id;
+  const youtubeUrl = `https://youtu.be/${videoId}`;
+  console.log(`🎉 Berhasil mengunggah video ke YouTube: ${youtubeUrl}`);
+  return { videoId, youtubeUrl };
+}
+
+// Helper: Send Telegram Report Notification
+async function sendTelegramReport(payload) {
+  console.log('📲 Mengirimkan laporan ke Telegram...');
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    console.warn('⚠️ Kredensial Telegram (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID) tidak ditemukan.');
+    return;
+  }
+
+  const text = `
+<b>🎬 VIDEO YOUTUBE DITERBITKAN OTOMATIS 🎬</b>
+
+<b>Judul Video:</b> ${payload.title}
+<b>Link YouTube:</b> <a href="${payload.youtubeUrl}">${payload.youtubeUrl}</a>
+<b>Kategori:</b> ${payload.category}
+<b>Link Artikel:</b> <a href="https://www.indigoblueprint.my.id/blog/${payload.articleId}">Lihat Artikel</a>
+<b>Transit Cloudflare R2:</b> Terunggah & Otomatis Dihapus (Cleaned) ✅
+<b>Waktu Pembuatan:</b> ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB
+
+<i>Dilaporkan secara otomatis oleh Theta Indigo Blueprint GitHub Action Workflows.</i>
+`.trim();
+
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: TELEGRAM_CHAT_ID,
+      text,
+      parse_mode: 'HTML',
+      disable_web_page_preview: false,
+    }),
+  });
+
+  const data = await response.json();
+  if (response.ok && data.ok) {
+    console.log('✅ Telegram report berhasil dikirim.');
+  } else {
+    console.error('❌ Gagal mengirim laporan Telegram:', data);
+  }
+}
+
+// --- MAIN EXECUTION PIPELINE ---
+async function main() {
+  const args = process.argv.slice(2);
+  const requestedId = args.find(a => a.startsWith('--article-id='))?.split('=')[1];
+  const isDryRun = args.includes('--dry-run');
+
+  try {
+    console.log('\n======================================================');
+    console.log('🎬 THETA INDIGO YOUTUBE VIDEO GENERATOR');
+    console.log('======================================================\n');
+
+    // 1. Ambil artikel dari D1
+    console.log('📥 Mengambil data artikel dari Cloudflare D1...');
+    let articles;
+    if (requestedId) {
+      articles = await queryD1('SELECT * FROM blogs WHERE id = ? LIMIT 1', [requestedId]);
+    } else {
+      articles = await queryD1('SELECT * FROM blogs WHERE published = 1 ORDER BY createdAt DESC LIMIT 1');
+    }
+
+    if (!articles || articles.length === 0) {
+      console.log('ℹ️ Tidak ada artikel untuk diproses.');
+      return;
+    }
+
+    const article = articles[0];
+    console.log(`📌 Artikel Ditemukan: [${article.id}] "${article.title}"`);
+
+    // 2. Format Teks untuk TTS & YouTube SEO
+    const cleanContent = stripHtml(article.content);
+    const speechText = `${article.title}. ${article.excerpt}. ${cleanContent.slice(0, 1200)}. Terima kasih telah mendengarkan Theta Indigo Blueprint. Kunjungi indigoblueprint.my.id.`;
+    
+    const youtubeTitle = `${article.title} | Theta Indigo Spiritual Podcast`;
+    const youtubeTags = ['Theta Indigo', 'Spiritual', 'Meditasi', 'Wawasan Jiwa', 'Numerologi', 'Weton Jawa', article.category];
+    const youtubeDescription = `✨ ${article.title} ✨
+
+${article.excerpt}
+
+📖 Baca artikel selengkapnya & analisis spiritual Anda di:
+https://www.indigoblueprint.my.id/blog/${article.id}
+
+🎧 Dengarkan podcast audio & ramalan harian:
+https://www.indigoblueprint.my.id
+
+--------------------------------------------------
+Kategori: ${article.category}
+Hak Cipta: © ${new Date().getFullYear()} Theta Indigo Blueprint
+Musik Latar: Royalty-Free Meditation Instrumental
+--------------------------------------------------
+#Spiritual #ThetaIndigo #Meditasi #Weton #Numerologi #SelfHealing`;
+
+    // 3. Menyiapkan File Temporary
+    const tempTtsPath = path.join('/tmp', `tts_${article.id}.mp3`);
+    const tempMixedAudioPath = path.join('/tmp', `mixed_${article.id}.mp3`);
+    const tempBannerPath = path.join('/tmp', `banner_${article.id}.jpg`);
+    const tempVideoPath = path.join('/tmp', `video_${article.id}.mp4`);
+    const bgMusicPath = path.join(process.cwd(), 'public', 'meditation.mp3');
+
+    // 4. TTS & Audio Mixing
+    await generateSpeechAudio(speechText, tempTtsPath);
+    mixAudioWithBackgroundMusic(tempTtsPath, bgMusicPath, tempMixedAudioPath);
+
+    // 5. Banner & Render Video
+    await prepareBannerImage(article, tempBannerPath);
+    renderVideo(tempBannerPath, tempMixedAudioPath, tempVideoPath);
+
+    if (isDryRun) {
+      console.log('\n🔍 [DRY RUN] Pembuatan video selesai. Melewati upload R2, YouTube, dan Telegram.');
+      console.log(`Hasil Video: ${tempVideoPath}`);
+      return;
+    }
+
+    // 6. Transit ke Cloudflare R2
+    const r2Key = `videos/transit-${article.id}-${Date.now()}.mp4`;
+    await uploadToR2(tempVideoPath, r2Key);
+
+    // 7. Upload ke YouTube Data API v3
+    const { videoId, youtubeUrl } = await uploadToYouTube(
+      tempVideoPath,
+      youtubeTitle,
+      youtubeDescription,
+      youtubeTags
+    );
+
+    // 8. Hapus dari Cloudflare R2 setelah sukses upload YouTube
+    await deleteFromR2(r2Key);
+
+    // 9. Kirim Telegram Report
+    await sendTelegramReport({
+      title: youtubeTitle,
+      youtubeUrl,
+      category: article.category,
+      articleId: article.id,
+    });
+
+    // Clean up temporary local files
+    [tempTtsPath, tempMixedAudioPath, tempBannerPath, tempVideoPath].forEach(f => {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    });
+
+    console.log('\n======================================================');
+    console.log('✅ ALUR PEMBUATAN & UNGGAH VIDEO YOUTUBE SELESAI SUKSES!');
+    console.log('======================================================\n');
+  } catch (err) {
+    console.error('\n❌ ERROR DALAM PIPELINE PEMBUATAN VIDEO YOUTUBE:', err);
+    process.exit(1);
+  }
+}
+
+main();
