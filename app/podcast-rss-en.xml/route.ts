@@ -20,6 +20,7 @@ function translateCategoryToEnglish(cat: string): string {
   const map: Record<string, string> = {
     'Numerologi': 'AI Numerology',
     'Spiritual': 'Spiritual Wisdom',
+    'Tips Spiritual': 'Spiritual Tips & Wisdom',
     'Wuku & Weton': 'Javanese Wuku & Weton',
     'Pranata Mangsa': 'Javanese Seasons (Pranata Mangsa)',
     'Bazi': 'Bazi Four Pillars',
@@ -30,21 +31,34 @@ function translateCategoryToEnglish(cat: string): string {
   return map[cat] || cat || 'Spirituality';
 }
 
-function fallbackTranslateTitle(text: string): string {
-  if (!text) return 'Spiritual Insight';
-  let t = text;
-  const replacements: [RegExp, string][] = [
-    [/Bazi: Kunci Mengungkap Rahasia Hidup dan Masa Depan/gi, 'Bazi: Key to Unlocking Secrets of Life and Future'],
+// Multi-pass comprehensive English translator engine
+function smartTranslateToEnglish(text: string, isTitle = false): string {
+  if (!text) return isTitle ? 'Spiritual Insight' : 'Daily spiritual insight and soul energy guidance by Theta Indigo Blueprint.';
+  let t = text.trim();
+
+  // 1. Phrase Level Exact & Pattern Replacements
+  const phraseReplacements: [RegExp, string][] = [
+    [/Menggapai Kedamaian Sejati:\s*Tips Spiritual untuk Hidup Lebih Berkualitas/gi, 'Attaining True Peace: Spiritual Tips for a Fulfilling Life'],
+    [/Menggapai kedamaian sejati dalam hidup memerlukan pemahaman mendalam tentang diri sendiri dan alam semesta\. Berikut beberapa tips spiritual untuk hidup lebih berkualitas dan damai\./gi, 'Attaining true peace in life requires a deep understanding of oneself and the universe. Here are key spiritual tips for living a more peaceful and fulfilling life.'],
+    [/Bazi:\s*Kunci Mengungkap Rahasia Hidup dan Masa Depan/gi, 'Bazi: Key to Unlocking Secrets of Life and Future'],
+    [/Bazi adalah sebuah sistem astrologi Tiongkok kuno yang membantu kita memahami diri sendiri dan masa depan\. Dengan mempelajari Bazi, kita dapat mengungkap rahasia hidup dan membuat keputusan yang lebih tepat\./gi, 'Bazi is an ancient Chinese astrological system that helps us understand ourselves and the future. By studying Bazi, we can unlock the secrets of life and make more aligned decisions.'],
     [/Mengenal Lebih Dalam/gi, 'In-Depth Guide to'],
-    [/Mengenal/gi, 'Understanding'],
-    [/Rahasia/gi, 'The Secrets of'],
+    [/Tips Spiritual untuk/gi, 'Spiritual Tips for'],
+    [/Tips Spiritual/gi, 'Spiritual Tips'],
+    [/Kedamaian Sejati/gi, 'True Peace'],
+    [/Hidup Lebih Berkualitas/gi, 'A More Fulfilling Life'],
+    [/Menggapai kedamaian/gi, 'Attaining peace'],
     [/Panduan Lengkap/gi, 'Complete Guide to'],
+    [/Panduan Praktis/gi, 'Practical Guide to'],
     [/Panduan/gi, 'Guide to'],
     [/Energi Hari Ini/gi, "Today's Energy"],
+    [/Energi Jiwa/gi, 'Soul Energy'],
+    [/Energi Batin/gi, 'Inner Energy'],
     [/Energi/gi, 'Energy of'],
     [/Transformasi Jiwa/gi, 'Soul Transformation'],
     [/Pola Karma/gi, 'Karmic Patterns'],
     [/Pesan Semesta/gi, 'Messages from the Universe'],
+    [/Pesan Jiwa/gi, 'Soul Message'],
     [/Pesan/gi, 'Message on'],
     [/Menemukan Jati Diri/gi, 'Discovering True Self'],
     [/Menemukan/gi, 'Discovering'],
@@ -60,52 +74,83 @@ function fallbackTranslateTitle(text: string): string {
     [/Kunci/gi, 'Key to'],
     [/Arti/gi, 'Meaning of'],
     [/Makna/gi, 'Significance of'],
+    [/Takdir Jiwa/gi, 'Soul Destiny'],
     [/Takdir/gi, 'Destiny & Soul Path'],
     [/Pembersihan Chakra/gi, 'Chakra Cleansing'],
+    [/Keseimbangan Energi/gi, 'Energy Balance'],
     [/Keseimbangan/gi, 'Balance of'],
+    [/Penyembuhan Batin/gi, 'Inner Healing'],
     [/Penyembuhan/gi, 'Healing'],
-    [/Jiwa/gi, 'Soul'],
-    [/Batin/gi, 'Inner Spirit'],
-    [/Masa Depan/gi, 'the Future'],
+    [/Jiwa Anda/gi, 'Your Soul'],
+    [/Batin Anda/gi, 'Your Inner Spirit'],
+    [/Diri Sendiri/gi, 'Oneself'],
+    [/Alam Semesta/gi, 'The Universe'],
+    [/Masa Depan/gi, 'The Future'],
+    [/Hidup Anda/gi, 'Your Life'],
     [/Hidup/gi, 'Life'],
-    [/dan/gi, 'and'],
-    [/di/gi, 'in'],
-    [/untuk/gi, 'for'],
-    [/dalam/gi, 'within'],
-  ];
-
-  for (const [regex, replacement] of replacements) {
-    t = t.replace(regex, replacement);
-  }
-  return t;
-}
-
-function fallbackTranslateExcerpt(text: string): string {
-  if (!text) return 'Daily spiritual insight and soul energy guidance by Theta Indigo Blueprint.';
-  let t = text;
-  const replacements: [RegExp, string][] = [
-    [/Bazi adalah sebuah sistem astrologi Tiongkok kuno yang membantu kita memahami diri sendiri dan masa depan\. Dengan mempelajari Bazi, kita dapat mengungkap rahasia hidup dan membuat keputusan yang lebih tepat\./gi, 'Bazi is an ancient Chinese astrological system that helps us understand ourselves and the future. By studying Bazi, we can unlock the secrets of life and make more aligned decisions.'],
     [/Artikel ini membahas/gi, 'This episode explores'],
     [/Temukan bagaimana/gi, 'Discover how'],
     [/Pelajari cara/gi, 'Learn how to'],
     [/Pahami energi/gi, 'Understand the energy of'],
     [/Simak wawasan/gi, 'Listen to spiritual insights on'],
-    [/batin Anda/gi, 'your inner spirit'],
-    [/jiwa Anda/gi, 'your soul'],
-    [/jalan hidup/gi, 'life path'],
-    [/kehidupan/gi, 'life'],
-    [/dan/gi, 'and'],
-    [/serta/gi, 'as well as'],
-    [/dengan/gi, 'with'],
-    [/untuk/gi, 'for'],
   ];
 
-  for (const [regex, replacement] of replacements) {
+  for (const [regex, replacement] of phraseReplacements) {
     t = t.replace(regex, replacement);
   }
+
+  // 2. Word Level Polish Replacements for any remaining Indonesian words
+  const wordReplacements: [RegExp, string][] = [
+    [/\bmenggapai\b/gi, 'attaining'],
+    [/\bkedamaian\b/gi, 'peace'],
+    [/\bsejati\b/gi, 'true'],
+    [/\bberkualitas\b/gi, 'fulfilling'],
+    [/\bmemerlukan\b/gi, 'requires'],
+    [/\bpemahaman\b/gi, 'understanding'],
+    [/\bmendalam\b/gi, 'deep'],
+    [/\btentang\b/gi, 'about'],
+    [/\bberikut\b/gi, 'here are'],
+    [/\bbeberapa\b/gi, 'several'],
+    [/\bdamai\b/gi, 'peaceful'],
+    [/\badalah\b/gi, 'is'],
+    [/\bsebuah\b/gi, 'a'],
+    [/\bsistem\b/gi, 'system'],
+    [/\bastrologi\b/gi, 'astrology'],
+    [/\btiongkok\b/gi, 'chinese'],
+    [/\bkuno\b/gi, 'ancient'],
+    [/\byang\b/gi, 'that'],
+    [/\bmembantu\b/gi, 'helps'],
+    [/\bkita\b/gi, 'us'],
+    [/\bmemahami\b/gi, 'understand'],
+    [/\bdengan\b/gi, 'with'],
+    [/\bmempelajari\b/gi, 'studying'],
+    [/\bdapat\b/gi, 'can'],
+    [/\bmengungkap\b/gi, 'unlock'],
+    [/\brahasia\b/gi, 'secrets'],
+    [/\bmembuat\b/gi, 'make'],
+    [/\bkeputusan\b/gi, 'decisions'],
+    [/\blebih\b/gi, 'more'],
+    [/\btepat\b/gi, 'aligned'],
+    [/\bdan\b/gi, 'and'],
+    [/\bdi\b/gi, 'in'],
+    [/\buntuk\b/gi, 'for'],
+    [/\bdalam\b/gi, 'within'],
+    [/\bserta\b/gi, 'and'],
+  ];
+
+  for (const [regex, replacement] of wordReplacements) {
+    t = t.replace(regex, replacement);
+  }
+
+  // Capitalize title first letter if needed
+  if (isTitle && t.length > 0) {
+    t = t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
   return t;
 }
 
+// AI Translation Batch helper with fast 4s timeout
 async function translateBlogsWithAI(
   items: { id: string; title: string; excerpt: string }[]
 ): Promise<Map<string, { title: string; excerpt: string }>> {
@@ -173,7 +218,7 @@ ${JSON.stringify(items.map(i => ({ id: i.id, title: i.title, excerpt: i.excerpt 
       }
     }
   } catch (err) {
-    console.warn('[EN RSS] AI translation failed/timed out, using fallback dictionary:', err);
+    console.warn('[EN RSS] AI translation failed/timed out, using smart phrase dictionary:', err);
   }
 
   return resultMap;
@@ -199,8 +244,8 @@ export async function GET() {
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
         const aiTrans = translatedMap.get(blog.id);
-        const enTitle = aiTrans?.title || fallbackTranslateTitle(blog.title);
-        const enExcerpt = aiTrans?.excerpt || fallbackTranslateExcerpt(blog.excerpt);
+        const enTitle = aiTrans?.title || smartTranslateToEnglish(blog.title, true);
+        const enExcerpt = aiTrans?.excerpt || smartTranslateToEnglish(blog.excerpt, false);
         const enCategory = translateCategoryToEnglish(blog.category);
 
         return `
