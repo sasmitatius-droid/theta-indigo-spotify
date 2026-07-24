@@ -44,6 +44,24 @@ async function fetchArticleContent(contentR2Path: string): Promise<string> {
   return '';
 }
 
+async function translateToEnglish(text: string): Promise<string> {
+  if (!text) return '';
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=id&tl=en&dt=t&q=${encodeURIComponent(text.trim())}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (res.ok) {
+      const json = (await res.json()) as any;
+      if (Array.isArray(json?.[0])) {
+        const translated = json[0].map((x: any) => x[0]).join('');
+        if (translated && translated.length > 0) return translated;
+      }
+    }
+  } catch (err: any) {
+    console.warn('Translate API warn:', err?.message || err);
+  }
+  return text;
+}
+
 async function main() {
   console.log('🎙️ Batch TTS Podcast Generator — Generating ID & EN MP3 audio for published blogs...');
   const blogs = await queryD1(
@@ -68,7 +86,7 @@ async function main() {
       console.log(`   ✅ ID MP3 uploaded: ${mp3Url} (${formatDuration(durationSec)})`);
 
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+      const expiresAt = new Date(now.getTime() + 300 * 24 * 60 * 60 * 1000); // 300 days
 
       const episode: PodcastEpisode = {
         id: episodeId,
@@ -92,7 +110,12 @@ async function main() {
     // 2. English Audio
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const { buffer, durationSec } = await textToMp3(blog.title, blog.excerpt || blog.title, content, 'en');
+      console.log(`   🌐 Translating "${blog.title.slice(0, 30)}..." to English...`);
+      const enTitle = await translateToEnglish(blog.title);
+      const enExcerpt = await translateToEnglish(blog.excerpt || blog.title);
+      const enContent = await translateToEnglish(content.slice(0, 3500));
+
+      const { buffer, durationSec } = await textToMp3(enTitle, enExcerpt, enContent, 'en');
       const timestamp = Date.now();
       const mp3Key = `podcast/ep-${blog.id}-en-${timestamp}.mp3`;
 
