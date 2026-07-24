@@ -1,7 +1,10 @@
 /**
  * Script Otomatisasi Video YouTube & Facebook untuk Theta Indigo Blueprint
  * - Mengambil artikel dari Cloudflare D1
- * - Membuat TTS Bahasa Indonesia & menggabungkan musik meditasi (public/meditation.mp3)
+ * - Menggunakan TTS Engine Podcast yang sama (MsEdgeTTS id-ID-ArdiNeural / GadisNeural + fallback google-tts)
+ * - Membaca KESELURUHAN isi artikel (hingga 4000 karakter, durasi 3-8 menit)
+ * - Mengunduh Gambar Banner Artikel Resmi (bannerR2Url / API generate-image)
+ * - Menggabungkan suara TTS dengan musik latar meditasi (public/meditation.mp3)
  * - Merender Video MP4 (1080p) via FFmpeg
  * - Mengunggah ke Cloudflare R2 untuk transit
  * - Mengunggah ke YouTube Data API v3 (OAuth2)
@@ -15,6 +18,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { google } = require('googleapis');
+const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const googleTTS = require('google-tts-api');
 
 // --- Konfigurasi Environment ---
@@ -73,7 +77,46 @@ async function queryD1(sql, params = []) {
 // Helper: Bersihkan Teks HTML dari Konten Artikel
 function stripHtml(html) {
   if (!html) return '';
-  return html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/h[1-6]>/gi, '.\n')
+    .replace(/<\/li>/gi, '.\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Helper: Susun Naskah Narasi Lengkap Artikel untuk Podcast
+function prepareNarrationScript(title, excerpt, content) {
+  const cleanContent = stripHtml(content);
+
+  const body =
+    cleanContent.length > 4000
+      ? cleanContent.slice(0, 3980) + '...'
+      : cleanContent;
+
+  const lines = [
+    'Theta Indigo Podcast.',
+    '',
+    `${title}.`,
+    '',
+    excerpt ? `${excerpt}.` : '',
+    '',
+    body,
+    '',
+    'Terima kasih telah mendengarkan Theta Indigo Podcast.',
+    'Temukan lebih banyak wawasan spiritual di website kami: indigoblueprint.my.id',
+  ];
+
+  return lines.filter(Boolean).join('\n').trim();
 }
 
 const execEnv = {
@@ -81,62 +124,158 @@ const execEnv = {
   PATH: `${process.env.PATH || ''}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`,
 };
 
-// Helper: Generate TTS Buffer
-async function generateSpeechAudio(text, outputPath) {
-  console.log('🎙️ Menghasilkan audio TTS untuk teks...');
-  const results = await googleTTS.getAllAudioBase64(text, {
+function streamToBuffer(readable) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    readable.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    const done = () => resolve(Buffer.concat(chunks));
+    readable.once('end', done);
+    readable.once('close', done);
+    readable.on('error', (err) => reject(err));
+  });
+}
+
+// MsEdgeTTS - Podcast Engine utama dengan id-ID-ArdiNeural / id-ID-GadisNeural
+async function ttsWithEdgeVoice(text, voice = 'id-ID-ArdiNeural') {
+  const tts = new MsEdgeTTS();
+  await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+
+  const CHUNK_SIZE = 2500;
+  const chunks = [];
+  let pos = 0;
+  while (pos < text.length) {
+    let end = Math.min(pos + CHUNK_SIZE, text.length);
+    if (end < text.length) {
+      const lastPeriod = text.lastIndexOf('.', end);
+      if (lastPeriod > pos + 500) end = lastPeriod + 1;
+    }
+    chunks.push(text.slice(pos, end).trim());
+    pos = end;
+  }
+
+  const buffers = [];
+  for (const chunk of chunks) {
+    if (!chunk) continue;
+    const readable = tts.toStream(chunk);
+    const audioBuffer = await streamToBuffer(readable);
+    if (audioBuffer && audioBuffer.length > 100) {
+      buffers.push(audioBuffer);
+    }
+  }
+
+  try {
+    tts.close();
+  } catch {}
+
+  if (buffers.length === 0) {
+    throw new Error('Edge TTS returned empty audio');
+  }
+
+  return Buffer.concat(buffers);
+}
+
+// Fallback ke google-tts-api jika Edge TTS berhalangan
+async function ttsWithGoogle(text) {
+  const base64List = await googleTTS.getAllAudioBase64(text, {
     lang: 'id',
     slow: false,
     host: 'https://translate.google.com',
-    timeout: 10000,
+    timeout: 15000,
+    splitPunct: '.,!?',
   });
 
-  const tempFiles = [];
-  for (let i = 0; i < results.length; i++) {
-    const chunkPath = path.join('/tmp', `tts_chunk_${i}.mp3`);
-    fs.writeFileSync(chunkPath, Buffer.from(results[i].base64, 'base64'));
-    tempFiles.push(chunkPath);
+  const buffers = base64List.map((item) => Buffer.from(item.base64, 'base64'));
+  return Buffer.concat(buffers);
+}
+
+// Helper: Generate Full Article Narration Speech Audio MP3
+async function generateSpeechAudio(script, outputPath) {
+  console.log('🎙️ Menghasilkan audio narasi TTS LENGKAP untuk artikel podcast...');
+  const voices = ['id-ID-ArdiNeural', 'id-ID-GadisNeural'];
+
+  for (const voice of voices) {
+    try {
+      console.log(`🔊 Mencoba Edge TTS Neural Voice (${voice})...`);
+      const buffer = await ttsWithEdgeVoice(script, voice);
+      if (buffer && buffer.length > 1000) {
+        fs.writeFileSync(outputPath, buffer);
+        console.log(`✅ TTS Podcast berhasil (MsEdgeTTS ${voice}): ${(buffer.length / 1024).toFixed(0)} KB`);
+        return;
+      }
+    } catch (err) {
+      console.warn(`⚠️ Edge TTS voice ${voice} gagal:`, err.message || err);
+    }
   }
 
-  const concatListPath = path.join('/tmp', 'concat_list.txt');
-  fs.writeFileSync(concatListPath, tempFiles.map(f => `file '${f}'`).join('\n'));
+  console.log('🔊 Menggunakan fallback Google TTS...');
+  try {
+    const buffer = await ttsWithGoogle(script);
+    if (buffer && buffer.length > 1000) {
+      fs.writeFileSync(outputPath, buffer);
+      console.log(`✅ TTS Podcast berhasil (Google TTS): ${(buffer.length / 1024).toFixed(0)} KB`);
+      return;
+    }
+  } catch (gErr) {
+    console.error('❌ Google TTS fallback gagal:', gErr.message || gErr);
+  }
 
-  execSync(`ffmpeg -y -f concat -safe 0 -i ${concatListPath} -c copy ${outputPath}`, { env: execEnv });
-
-  tempFiles.forEach(f => fs.existsSync(f) && fs.unlinkSync(f));
-  fs.existsSync(concatListPath) && fs.unlinkSync(concatListPath);
-  console.log(`✅ Audio TTS berhasil disimpan ke ${outputPath}`);
+  throw new Error('Semua TTS engine gagal menghasilkan audio.');
 }
 
 // Helper: Mix Audio Speech + Meditation Background Music
 function mixAudioWithBackgroundMusic(speechPath, musicPath, outputPath) {
   console.log('🎵 Menggabungkan suara TTS dengan musik meditasi...');
+  // Volume TTS 1.2, Volume Musik Meditasi 0.15, durasi disesuaikan dengan TTS
   const command = `ffmpeg -y -i "${speechPath}" -i "${musicPath}" -filter_complex "[0:a]volume=1.2[speech];[1:a]volume=0.15[bg];[speech][bg]amix=inputs=2:duration=first:dropout_transition=2[aout]" -map "[aout]" -c:a mp3 -b:a 192k "${outputPath}"`;
   execSync(command, { env: execEnv });
   console.log(`✅ Mixing audio selesai: ${outputPath}`);
 }
 
-// Helper: Download/Fetch Banner Image
+// Helper: Download/Fetch Gambar Banner Artikel Resmi
 async function prepareBannerImage(article, outputPath) {
-  console.log('🖼️ Menyiapkan banner artikel...');
+  console.log('🖼️ Menyiapkan GAMBAR BANNER ARTIKEL RESMI...');
+  
+  // 1. Coba ambil dari bannerR2Url jika ada di database
   if (article.bannerR2Url) {
     try {
+      console.log(`📥 Mengunduh banner R2: ${article.bannerR2Url}`);
       const res = await fetch(article.bannerR2Url);
       if (res.ok) {
         const buffer = Buffer.from(await res.arrayBuffer());
         fs.writeFileSync(outputPath, buffer);
-        console.log('✅ Banner berhasil diunduh dari R2 URL.');
+        console.log('✅ Gambar Banner Artikel berhasil diunduh dari R2!');
         return;
       }
     } catch (err) {
-      console.warn('⚠️ Gagal mengambil bannerR2Url, menggunakan fallback banner.');
+      console.warn('⚠️ Gagal mengunduh bannerR2Url, mencoba generator banner dinamis...');
     }
   }
 
+  // 2. Jika bannerR2Url belum ada, ambil dari API generator banner artikel resmi
+  const dynamicBannerUrl = `https://www.indigoblueprint.my.id/api/admin/generate-image?title=${encodeURIComponent(
+    article.title
+  )}&description=${encodeURIComponent(article.excerpt || '')}&icon=${encodeURIComponent(
+    article.icon || '✨'
+  )}&bg=${encodeURIComponent(article.bg || '1')}`;
+
+  try {
+    console.log(`🎨 Mengunduh gambar banner artikel dinamis: ${dynamicBannerUrl}`);
+    const res = await fetch(dynamicBannerUrl);
+    if (res.ok) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(outputPath, buffer);
+      console.log('✅ Gambar Banner Artikel Resmi berhasil digenerate & diunduh!');
+      return;
+    }
+  } catch (err) {
+    console.warn('⚠️ Gagal mengambil banner dari API generate-image:', err.message);
+  }
+
+  // 3. Fallback terakhir: Gunakan logo lokal jika semua koneksi internet banner gagal
   const localLogo = path.join(process.cwd(), 'public', 'logo.png');
   if (fs.existsSync(localLogo)) {
     fs.copyFileSync(localLogo, outputPath);
-    console.log('✅ Banner fallback menggunakan logo.png.');
+    console.log('✅ Fallback gambar menggunakan logo.png.');
   } else {
     throw new Error('Banner image tidak ditemukan.');
   }
@@ -145,7 +284,8 @@ async function prepareBannerImage(article, outputPath) {
 // Helper: Render 1080p MP4 Video
 function renderVideo(imagePath, audioPath, outputPath) {
   console.log('🎬 Merender Video 1080p MP4 via FFmpeg...');
-  const command = `ffmpeg -y -loop 1 -i "${imagePath}" -i "${audioPath}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-ih)/2:(oh-ih)/2:black" -c:v libx264 -tune stillimage -c:a copy -pix_fmt yuv420p -shortest "${outputPath}"`;
+  // Skala ke 1920x1080 dengan padding hitam jika aspect ratio berbeda
+  const command = `ffmpeg -y -loop 1 -i "${imagePath}" -i "${audioPath}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -tune stillimage -c:a copy -pix_fmt yuv420p -shortest "${outputPath}"`;
   execSync(command, { env: execEnv });
   console.log(`✅ Video berhasil dirender: ${outputPath}`);
 }
@@ -307,7 +447,7 @@ async function main() {
 
   try {
     console.log('\n======================================================');
-    console.log('🎬 THETA INDIGO YOUTUBE VIDEO GENERATOR');
+    console.log('🎬 THETA INDIGO YOUTUBE VIDEO GENERATOR (FULL PODCAST ENGINE)');
     console.log('======================================================\n');
 
     // 1. Ambil artikel dari D1
@@ -327,9 +467,8 @@ async function main() {
     const article = articles[0];
     console.log(`📌 Artikel Ditemukan: [${article.id}] "${article.title}"`);
 
-    // 2. Format Teks untuk TTS & YouTube SEO
-    const cleanContent = stripHtml(article.content);
-    const speechText = `${article.title}. ${article.excerpt}. ${cleanContent.slice(0, 1200)}. Terima kasih telah mendengarkan Theta Indigo Blueprint. Kunjungi indigoblueprint.my.id.`;
+    // 2. Susun Naskah Narasi Lengkap Artikel untuk TTS Podcast & YouTube SEO
+    const narrationScript = prepareNarrationScript(article.title, article.excerpt, article.content);
     
     const youtubeTitle = `${article.title} | Theta Indigo Spiritual Podcast`;
     const youtubeTags = ['Theta Indigo', 'Spiritual', 'Meditasi', 'Wawasan Jiwa', 'Numerologi', 'Weton Jawa', article.category];
@@ -357,11 +496,11 @@ Musik Latar: Royalty-Free Meditation Instrumental
     const tempVideoPath = path.join('/tmp', `video_${article.id}.mp4`);
     const bgMusicPath = path.join(process.cwd(), 'public', 'meditation.mp3');
 
-    // 4. TTS & Audio Mixing
-    await generateSpeechAudio(speechText, tempTtsPath);
+    // 4. TTS Neural Podcast Engine (MsEdgeTTS id-ID-ArdiNeural / GadisNeural) & Audio Mixing
+    await generateSpeechAudio(narrationScript, tempTtsPath);
     mixAudioWithBackgroundMusic(tempTtsPath, bgMusicPath, tempMixedAudioPath);
 
-    // 5. Banner & Render Video
+    // 5. Unduh Gambar Banner Artikel Resmi & Render Video
     await prepareBannerImage(article, tempBannerPath);
     renderVideo(tempBannerPath, tempMixedAudioPath, tempVideoPath);
 
