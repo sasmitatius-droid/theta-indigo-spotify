@@ -16,8 +16,12 @@ function escapeXml(unsafe: string): string {
   });
 }
 
-async function getR2AudioMap(): Promise<Map<string, { url: string; length: string; duration: string }>> {
-  const map = new Map<string, { url: string; length: string; duration: string }>();
+async function getR2AudioMap(): Promise<{
+  byId: Map<string, { url: string; length: string; duration: string }>;
+  byTitle: Map<string, { url: string; length: string; duration: string }>;
+}> {
+  const byId = new Map<string, { url: string; length: string; duration: string }>();
+  const byTitle = new Map<string, { url: string; length: string; duration: string }>();
   try {
     const res = await fetch('https://pub-3dfac1ebd38a458faff5626cae902ad2.r2.dev/podcast/feed.xml', {
       headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -32,19 +36,19 @@ async function getR2AudioMap(): Promise<Map<string, { url: string; length: strin
         const durMatch = itemXml.match(/<itunes:duration>([^<]+)<\/itunes:duration>/i);
 
         if (encMatch) {
-          const audioUrl = encMatch[1];
-          const audioLength = encMatch[2];
+          const audioUrl = encMatch[1].trim();
+          const audioLength = encMatch[2].trim();
           const duration = durMatch ? durMatch[1].trim() : '03:00';
           const audioData = { url: audioUrl, length: audioLength, duration };
 
           if (titleMatch) {
             const rawTitle = titleMatch[1].trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            map.set(rawTitle.toLowerCase(), audioData);
+            byTitle.set(rawTitle.toLowerCase(), audioData);
           }
 
-          const idMatch = audioUrl.match(/ep-([a-z0-9\-]+)-\d+\.mp3/i);
+          const idMatch = audioUrl.match(/ep-(.+)-[0-9]+\.mp3$/i);
           if (idMatch) {
-            map.set(idMatch[1].toLowerCase(), audioData);
+            byId.set(idMatch[1].toLowerCase(), audioData);
           }
         }
       }
@@ -52,7 +56,7 @@ async function getR2AudioMap(): Promise<Map<string, { url: string; length: strin
   } catch (err) {
     console.warn('Could not fetch R2 podcast feed:', err);
   }
-  return map;
+  return { byId, byTitle };
 }
 
 export async function GET() {
@@ -75,7 +79,7 @@ export async function GET() {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
-        const r2Audio = r2AudioMap.get(blog.id.toLowerCase()) || r2AudioMap.get((blog.title || '').toLowerCase());
+        const r2Audio = r2AudioMap.byId.get(blog.id.toLowerCase()) || r2AudioMap.byTitle.get((blog.title || '').trim().toLowerCase());
         const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
         const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
         const duration = r2Audio ? r2Audio.duration : '05:00';
