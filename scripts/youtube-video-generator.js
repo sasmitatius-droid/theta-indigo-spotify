@@ -572,11 +572,12 @@ async function main() {
       console.warn('⚠️ Gagal membersihkan transit video lama R2:', cleanupErr.message || cleanupErr);
     }
 
-    // 1. Ambil ARTIKEL TERBARU dari Cloudflare D1
+    // 1. Ambil Podcast Bahasa Indonesia Terbaru dari R2 & Artikel Pencocok dari D1
     let article;
+    let podcastAudioDownloaded = false;
 
     if (requestedId) {
-      // Mode manual: artikel spesifik diminta lewat --article-id=
+      // Mode manual: artikel spesifik diminta
       console.log(`📥 Mode Manual: Mengambil artikel ID=${requestedId} dari D1...`);
       const articles = await queryD1('SELECT * FROM blogs WHERE id = ? LIMIT 1', [requestedId]);
       if (!articles || articles.length === 0) {
@@ -585,21 +586,64 @@ async function main() {
       }
       article = articles[0];
     } else {
-      // Mode otomatis: SELALU ambil artikel TERBARU yang dipublikasikan dari D1
-      console.log('🔍 Mode Otomatis: Mengambil ARTIKEL TERBARU yang dipublikasikan dari Cloudflare D1...');
-      const articles = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
-      if (!articles || articles.length === 0) {
-        console.log('ℹ️ Tidak ada artikel terpublikasi untuk diproses.');
-        return;
+      // Mode otomatis: Cari podcast Bahasa Indonesia terbaru di R2
+      console.log('🔍 Mode Otomatis: Mencari podcast Bahasa Indonesia terbaru di R2...');
+      try {
+        const listRes = await s3Client.send(
+          new ListObjectsV2Command({
+            Bucket: R2_BUCKET_NAME,
+            Prefix: 'podcast/ep-',
+          })
+        );
+
+        // Filter file Bahasa Indonesia (tidak mengandung '-en-')
+        const idFiles = (listRes.Contents || [])
+          .filter(obj => obj.Key && !obj.Key.includes('-en-'))
+          .sort((a, b) => {
+            const tsA = parseInt((a.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
+            const tsB = parseInt((b.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
+            return tsB - tsA;
+          });
+
+        if (idFiles.length > 0) {
+          const latestPodcastKey = idFiles[0].Key;
+          console.log(`🎯 Podcast Bahasa Indonesia Terbaru Ditemukan di R2: ${latestPodcastKey}`);
+
+          // Ekstrak articleId dari nama file podcast: podcast/ep-{articleId}-{timestamp}.mp3
+          const keyBasename = latestPodcastKey.replace('podcast/ep-', '').replace(/\.mp3$/, '');
+          const articleId = keyBasename.replace(/-\d{13}$/, '');
+          console.log(`   → ArticleId diekstrak: "${articleId}"`);
+
+          const articles = await queryD1('SELECT * FROM blogs WHERE id = ? LIMIT 1', [articleId]);
+          if (articles && articles.length > 0) {
+            article = articles[0];
+          } else {
+            console.warn(`⚠️ Artikel "${articleId}" tidak ditemukan di D1. Fallback ke artikel terpublikasi terbaru...`);
+            const fallback = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
+            article = fallback[0];
+          }
+        } else {
+          console.warn('⚠️ Tidak ada file podcast di R2. Mengambil artikel terpublikasi terbaru dari D1...');
+          const articles = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
+          if (!articles || articles.length === 0) {
+            console.log('ℹ️ Tidak ada artikel untuk diproses.');
+            return;
+          }
+          article = articles[0];
+        }
+      } catch (r2Err) {
+        console.warn('⚠️ Gagal membaca daftar podcast di R2:', r2Err.message || r2Err);
+        const articles = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
+        if (!articles || articles.length === 0) return;
+        article = articles[0];
       }
-      article = articles[0];
     }
 
-    console.log(`\n📌 Artikel Terbaru Terpilih: [${article.id}] "${article.title}"`);
+    console.log(`\n📌 Artikel Terpilih: [${article.id}] "${article.title}"`);
     console.log(`   Kategori: ${article.category}`);
     console.log(`   Tanggal Dibuat: ${article.createdAt}`);
 
-    // 2. Susun Naskah Narasi: Judul + Isi Artikel (BUKAN excerpt/banner)
+    // 2. Susun Naskah Narasi (untuk fallback jika MP3 podcast R2 belum ada)
     const narrationScript = prepareNarrationScript(article.title, article.content);
     
     const youtubeTitle = `${article.title} | Theta Indigo Spiritual Podcast`;
@@ -628,10 +672,10 @@ Musik Latar: Royalty-Free Meditation Instrumental
     const tempVideoPath = path.join('/tmp', `video_${article.id}.mp4`);
     const bgMusicPath = path.join(process.cwd(), 'public', 'meditation.mp3');
 
-    // 4. Ambil Audio Podcast ID dari R2 (fallback ke TTS jika belum ada di R2)
+    // 4. Unduh Audio Podcast MP3 Bahasa Indonesia dari R2 yang cocok dengan artikel
     const podcastAudioFound = await fetchPodcastAudioFromR2(article.id, tempTtsPath);
     if (!podcastAudioFound) {
-      console.log('🔄 Fallback: Generate TTS sendiri karena audio podcast tidak ditemukan di R2...');
+      console.log('🔄 Fallback: Generate TTS sendiri karena audio podcast R2 tidak ditemukan...');
       await generateSpeechAudio(narrationScript, tempTtsPath);
     }
     mixAudioWithBackgroundMusic(tempTtsPath, bgMusicPath, tempMixedAudioPath);
