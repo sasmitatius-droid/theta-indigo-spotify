@@ -36,21 +36,31 @@ export async function getR2PodcastAudioMap(): Promise<{
     );
     for (const obj of res.Contents || []) {
       if (!obj.Key) continue;
-      const enMatch = obj.Key.match(/ep-(.+)-en-[0-9]+\.mp3$/i);
+
+      // Non-greedy .+? + exact 13-digit timestamp to avoid cutting articleId that contains numbers
+      const enMatch = obj.Key.match(/ep-(.+?)-en-(\d{13})\.mp3$/i);
       if (enMatch) {
         const blogId = enMatch[1].toLowerCase();
         const url = `${R2_PUBLIC_URL}/${obj.Key}`;
         const length = String(obj.Size || '1922304');
-        enMap.set(blogId, { url, length });
+        // Keep the latest (largest timestamp) if duplicate
+        const existing = enMap.get(blogId);
+        if (!existing || url > existing.url) {
+          enMap.set(blogId, { url, length });
+        }
         continue;
       }
 
-      const idMatch = obj.Key.match(/ep-(.+)-[0-9]+\.mp3$/i);
+      const idMatch = obj.Key.match(/ep-(.+?)-(\d{13})\.mp3$/i);
       if (idMatch) {
         const blogId = idMatch[1].toLowerCase();
         const url = `${R2_PUBLIC_URL}/${obj.Key}`;
         const length = String(obj.Size || '1922304');
-        idMap.set(blogId, { url, length });
+        // Keep the latest (largest timestamp) if duplicate
+        const existing = idMap.get(blogId);
+        if (!existing || url > existing.url) {
+          idMap.set(blogId, { url, length });
+        }
       }
     }
   } catch (err) {

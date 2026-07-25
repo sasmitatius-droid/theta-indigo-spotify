@@ -540,6 +540,42 @@ async function sendTelegramReport(payload) {
   }
 }
 
+// ─── R2 Deduplication Helpers ──────────────────────────────────────────────────
+
+const STATE_KEY = 'videos/published-articles.json';
+
+async function loadPublishedIds() {
+  try {
+    const res = await s3Client.send(
+      new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: STATE_KEY })
+    );
+    const chunks = [];
+    for await (const chunk of res.Body) chunks.push(Buffer.from(chunk));
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8') || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function markArticleAsPublished(articleId) {
+  const ids = await loadPublishedIds();
+  if (!ids.includes(articleId)) {
+    ids.unshift(articleId); // newest first
+    // Keep only last 200 entries to avoid unbounded growth
+    const trimmed = ids.slice(0, 200);
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: STATE_KEY,
+        Body: JSON.stringify(trimmed, null, 2),
+        ContentType: 'application/json',
+      })
+    );
+    console.log(`📌 Article ID "${articleId}" ditandai sudah punya video YouTube.`);
+  }
+}
+
 // --- MAIN EXECUTION PIPELINE ---
 async function main() {
   const args = process.argv.slice(2);
@@ -572,9 +608,8 @@ async function main() {
       console.warn('⚠️ Gagal membersihkan transit video lama R2:', cleanupErr.message || cleanupErr);
     }
 
-    // 1. Ambil Podcast Bahasa Indonesia Terbaru dari R2 & Artikel Pencocok dari D1
+    // 1. Ambil Artikel & Terapkan Deduplication
     let article;
-    let podcastAudioDownloaded = false;
 
     if (requestedId) {
       // Mode manual: artikel spesifik diminta
@@ -586,57 +621,33 @@ async function main() {
       }
       article = articles[0];
     } else {
-      // Mode otomatis: Cari podcast Bahasa Indonesia terbaru di R2
-      console.log('🔍 Mode Otomatis: Mencari podcast Bahasa Indonesia terbaru di R2...');
-      try {
-        const listRes = await s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: R2_BUCKET_NAME,
-            Prefix: 'podcast/ep-',
-          })
-        );
+      // ── Mode Otomatis: langsung query D1 artikel terbaru ───────────────────
+      // Tidak lagi bergantung pada file R2 podcast — memastikan artikel HARI INI selalu terpilih
+      console.log('🔍 Mode Otomatis: Mengambil artikel terbaru yang belum punya video dari D1...');
 
-        // Filter file Bahasa Indonesia (tidak mengandung '-en-')
-        const idFiles = (listRes.Contents || [])
-          .filter(obj => obj.Key && !obj.Key.includes('-en-'))
-          .sort((a, b) => {
-            const tsA = parseInt((a.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
-            const tsB = parseInt((b.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
-            return tsB - tsA;
-          });
+      // Baca state deduplication dari R2
+      const publishedArticleIds = await loadPublishedIds();
+      console.log(`   📋 State deduplication: ${publishedArticleIds.length} artikel sudah punya video`);
 
-        if (idFiles.length > 0) {
-          const latestPodcastKey = idFiles[0].Key;
-          console.log(`🎯 Podcast Bahasa Indonesia Terbaru Ditemukan di R2: ${latestPodcastKey}`);
+      // Ambil 10 artikel terbaru dari D1, pilih yang belum punya video
+      const candidates = await queryD1(
+        "SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 10"
+      );
 
-          // Ekstrak articleId dari nama file podcast: podcast/ep-{articleId}-{timestamp}.mp3
-          const keyBasename = latestPodcastKey.replace('podcast/ep-', '').replace(/\.mp3$/, '');
-          const articleId = keyBasename.replace(/-\d{13}$/, '');
-          console.log(`   → ArticleId diekstrak: "${articleId}"`);
-
-          const articles = await queryD1('SELECT * FROM blogs WHERE id = ? LIMIT 1', [articleId]);
-          if (articles && articles.length > 0) {
-            article = articles[0];
-          } else {
-            console.warn(`⚠️ Artikel "${articleId}" tidak ditemukan di D1. Fallback ke artikel terpublikasi terbaru...`);
-            const fallback = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
-            article = fallback[0];
-          }
-        } else {
-          console.warn('⚠️ Tidak ada file podcast di R2. Mengambil artikel terpublikasi terbaru dari D1...');
-          const articles = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
-          if (!articles || articles.length === 0) {
-            console.log('ℹ️ Tidak ada artikel untuk diproses.');
-            return;
-          }
-          article = articles[0];
-        }
-      } catch (r2Err) {
-        console.warn('⚠️ Gagal membaca daftar podcast di R2:', r2Err.message || r2Err);
-        const articles = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
-        if (!articles || articles.length === 0) return;
-        article = articles[0];
+      if (!candidates || candidates.length === 0) {
+        console.log('ℹ️ Tidak ada artikel untuk diproses.');
+        return;
       }
+
+      // Pilih artikel terbaru yang belum pernah dibuat videonya
+      article = candidates.find(a => !publishedArticleIds.includes(a.id));
+
+      if (!article) {
+        console.log('ℹ️ Semua artikel 10 terbaru sudah punya video YouTube. Tidak ada yang perlu diproses.');
+        return;
+      }
+
+      console.log(`✅ Artikel baru dipilih untuk dibuatkan video: [${article.id}]`);
     }
 
     console.log(`\n📌 Artikel Terpilih: [${article.id}] "${article.title}"`);
@@ -732,6 +743,13 @@ Musik Latar: Royalty-Free Meditation Instrumental
         articleId: article.id,
         fbStatus,
       });
+
+      // 11. Tandai artikel ini sudah punya video YouTube (deduplication state)
+      try {
+        await markArticleAsPublished(article.id);
+      } catch (stateErr) {
+        console.warn('⚠️ Gagal menyimpan state deduplication ke R2:', stateErr.message || stateErr);
+      }
     }
 
     // Clean up temporary local files

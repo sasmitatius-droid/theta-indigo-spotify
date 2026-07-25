@@ -17,11 +17,17 @@ function escapeXml(unsafe: string): string {
   });
 }
 
+/** Estimate MM:SS duration from MP3 file size (assuming ~32 KB/s = 256kbps mono) */
+function estimateDuration(fileSizeBytes: number): string {
+  const seconds = Math.max(30, Math.round(fileSizeBytes / 32768));
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export async function GET() {
   const baseUrl = 'https://www.indigoblueprint.my.id';
   const feedUrl = `${baseUrl}/podcast-rss-id.xml`;
-  const defaultAudioUrl = `${baseUrl}/meditation.mp3`;
-  const defaultAudioLength = '4200213';
 
   try {
     const [blogs, r2AudioMap] = await Promise.all([
@@ -32,15 +38,22 @@ export async function GET() {
       getR2PodcastAudioMap(),
     ]);
 
-    const itemsXml = blogs
+    // Only include articles that already have a real TTS audio in R2
+    // Articles without audio are skipped — no fallback to meditation.mp3
+    const blogsWithAudio = blogs.filter((blog) =>
+      r2AudioMap.idMap.has(blog.id.toLowerCase())
+    );
+
+    const itemsXml = blogsWithAudio
       .map((blog) => {
         const pubDate = blog.createdAt ? new Date(blog.createdAt).toUTCString() : new Date().toUTCString();
         const articleLink = `${baseUrl}/blog/${blog.id}`;
 
-        const r2Audio = r2AudioMap.idMap.get(blog.id.toLowerCase());
-        const audioUrl = r2Audio ? r2Audio.url : defaultAudioUrl;
-        const audioLength = r2Audio ? r2Audio.length : defaultAudioLength;
-        const duration = '03:15';
+        // r2Audio is guaranteed to exist here (filtered above)
+        const r2Audio = r2AudioMap.idMap.get(blog.id.toLowerCase())!;
+        const audioUrl = r2Audio.url;
+        const audioLength = r2Audio.length;
+        const duration = estimateDuration(parseInt(audioLength, 10));
 
         return `
     <item>
