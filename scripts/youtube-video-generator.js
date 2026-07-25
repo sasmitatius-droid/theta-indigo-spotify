@@ -21,6 +21,23 @@ const { google } = require('googleapis');
 const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const googleTTS = require('google-tts-api');
 
+// --- Load .env.local without external dependencies ---
+const envFile = path.resolve(process.cwd(), '.env.local');
+if (fs.existsSync(envFile)) {
+  const envLines = fs.readFileSync(envFile, 'utf8').split('\n');
+  for (const line of envLines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const idx = trimmed.indexOf('=');
+      const key = trimmed.slice(0, idx).trim();
+      const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+
 // --- Konfigurasi Environment ---
 const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const CLOUDFLARE_D1_DATABASE_ID = process.env.CLOUDFLARE_D1_DATABASE_ID;
@@ -534,9 +551,28 @@ async function main() {
     console.log('🎬 THETA INDIGO YOUTUBE VIDEO GENERATOR (FULL PODCAST ENGINE)');
     console.log('======================================================\n');
 
-    // 1. Cari podcast terbaru (Bahasa Indonesia) di R2
-    //    Dari nama file: podcast/ep-{articleId}-{timestamp}.mp3
-    //    Kita ekstrak articleId → query D1 untuk artikel yang sama → banner pasti cocok
+    // 0. Bersihkan file transit video lama di R2 (jika ada yang tersisa dari run sebelumnya)
+    try {
+      console.log('🧹 Memeriksa dan membersihkan file transit video lama di R2...');
+      const oldTransitList = await s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: R2_BUCKET_NAME,
+          Prefix: 'videos/transit-',
+        })
+      );
+      if (oldTransitList.Contents && oldTransitList.Contents.length > 0) {
+        for (const obj of oldTransitList.Contents) {
+          if (obj.Key) {
+            console.log(`🗑️ Menghapus transit lama R2: ${obj.Key}`);
+            await deleteFromR2(obj.Key);
+          }
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn('⚠️ Gagal membersihkan transit video lama R2:', cleanupErr.message || cleanupErr);
+    }
+
+    // 1. Ambil ARTIKEL TERBARU dari Cloudflare D1
     let article;
 
     if (requestedId) {
@@ -549,62 +585,19 @@ async function main() {
       }
       article = articles[0];
     } else {
-      // Mode otomatis: cari podcast ID terbaru di R2, lalu ambil artikel yang sama dari D1
-      console.log('🔍 Mencari podcast Bahasa Indonesia terbaru di R2...');
-      const listRes = await s3Client.send(
-        new ListObjectsV2Command({
-          Bucket: R2_BUCKET_NAME,
-          Prefix: 'podcast/ep-',
-        })
-      );
-
-      // Filter hanya file Indonesia (tidak ada '-en-'), sort by timestamp descending
-      const idFiles = (listRes.Contents || [])
-        .filter(obj => obj.Key && !obj.Key.includes('-en-'))
-        .sort((a, b) => {
-          const tsA = parseInt((a.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
-          const tsB = parseInt((b.Key.match(/-(\d{13})\.mp3$/) || [])[1] || '0', 10);
-          return tsB - tsA;
-        });
-
-      if (idFiles.length === 0) {
-        console.log('⚠️ Tidak ada podcast ID di R2. Fallback ke artikel terbaru dari D1...');
-        const articles = await queryD1('SELECT * FROM blogs WHERE published = 1 ORDER BY createdAt DESC LIMIT 1');
-        if (!articles || articles.length === 0) {
-          console.log('ℹ️ Tidak ada artikel untuk diproses.');
-          return;
-        }
-        article = articles[0];
-      } else {
-        // Ekstrak articleId dari nama file podcast: podcast/ep-{articleId}-{timestamp}.mp3
-        const latestPodcastKey = idFiles[0].Key;
-        // Key format: podcast/ep-ARTICLEID-1234567890123.mp3
-        // ArticleId bisa mengandung huruf, angka, dan tanda hubung — ambil bagian setelah "ep-" dan sebelum timestamp 13 digit
-        const keyBasename = latestPodcastKey.replace('podcast/ep-', '').replace(/\.mp3$/, '');
-        // Hapus timestamp 13 digit di akhir (plus tanda hubung sebelumnya)
-        const articleId = keyBasename.replace(/-\d{13}$/, '');
-
-        console.log(`\n🎯 Podcast ID terbaru: ${latestPodcastKey}`);
-        console.log(`   → ArticleId diekstrak: "${articleId}"`);
-        console.log(`📥 Mengambil data artikel dari D1 berdasarkan articleId podcast...`);
-
-        const articles = await queryD1('SELECT * FROM blogs WHERE id = ? LIMIT 1', [articleId]);
-        if (!articles || articles.length === 0) {
-          console.warn(`⚠️ Artikel "${articleId}" tidak ditemukan di D1. Fallback ke artikel terbaru...`);
-          const fallback = await queryD1('SELECT * FROM blogs WHERE published = 1 ORDER BY createdAt DESC LIMIT 1');
-          if (!fallback || fallback.length === 0) {
-            console.log('ℹ️ Tidak ada artikel untuk diproses.');
-            return;
-          }
-          article = fallback[0];
-        } else {
-          article = articles[0];
-        }
+      // Mode otomatis: SELALU ambil artikel TERBARU yang dipublikasikan dari D1
+      console.log('🔍 Mode Otomatis: Mengambil ARTIKEL TERBARU yang dipublikasikan dari Cloudflare D1...');
+      const articles = await queryD1("SELECT * FROM blogs WHERE published = 1 OR status = 'published' ORDER BY createdAt DESC LIMIT 1");
+      if (!articles || articles.length === 0) {
+        console.log('ℹ️ Tidak ada artikel terpublikasi untuk diproses.');
+        return;
       }
+      article = articles[0];
     }
 
-    console.log(`\n📌 Artikel: [${article.id}] "${article.title}"`);
+    console.log(`\n📌 Artikel Terbaru Terpilih: [${article.id}] "${article.title}"`);
     console.log(`   Kategori: ${article.category}`);
+    console.log(`   Tanggal Dibuat: ${article.createdAt}`);
 
     // 2. Susun Naskah Narasi: Judul + Isi Artikel (BUKAN excerpt/banner)
     const narrationScript = prepareNarrationScript(article.title, article.content);
@@ -635,8 +628,7 @@ Musik Latar: Royalty-Free Meditation Instrumental
     const tempVideoPath = path.join('/tmp', `video_${article.id}.mp4`);
     const bgMusicPath = path.join(process.cwd(), 'public', 'meditation.mp3');
 
-    // 4. Ambil Audio Podcast ID dari R2 (audio & artikel sudah dijamin sinkron di step 1)
-    //    Fallback ke TTS sendiri hanya jika audio tidak ada di R2
+    // 4. Ambil Audio Podcast ID dari R2 (fallback ke TTS jika belum ada di R2)
     const podcastAudioFound = await fetchPodcastAudioFromR2(article.id, tempTtsPath);
     if (!podcastAudioFound) {
       console.log('🔄 Fallback: Generate TTS sendiri karena audio podcast tidak ditemukan di R2...');
@@ -644,7 +636,7 @@ Musik Latar: Royalty-Free Meditation Instrumental
     }
     mixAudioWithBackgroundMusic(tempTtsPath, bgMusicPath, tempMixedAudioPath);
 
-    // 5. Banner artikel diambil berdasarkan artikel yang SAMA dengan audio podcast → selalu cocok ✅
+    // 5. Banner artikel diambil berdasarkan artikel terbaru
     await prepareBannerImage(article, tempBannerPath);
     renderVideo(tempBannerPath, tempMixedAudioPath, tempVideoPath);
 
@@ -654,38 +646,49 @@ Musik Latar: Royalty-Free Meditation Instrumental
       return;
     }
 
-    // 6. Transit ke Cloudflare R2
+    // 6. Transit ke Cloudflare R2, Upload, dan Clean Up Otomatis di block finally
     const r2Key = `videos/transit-${article.id}-${Date.now()}.mp4`;
-    await uploadToR2(tempVideoPath, r2Key);
-
-    // 7. Upload ke YouTube Data API v3
-    const { videoId, youtubeUrl } = await uploadToYouTube(
-      tempVideoPath,
-      youtubeTitle,
-      youtubeDescription,
-      youtubeTags
-    );
-
-    // 8. Bagikan Video ke Facebook Page
+    let youtubeUrl = null;
     let fbStatus = 'Skipped';
+
     try {
-      const fbResult = await shareToFacebookPage(article.title, article.excerpt, youtubeUrl, article.id);
-      fbStatus = fbResult.success ? 'Success ✅' : `Failed: ${fbResult.error} ❌`;
-    } catch (fbErr) {
-      fbStatus = `Error: ${fbErr.message} ❌`;
+      await uploadToR2(tempVideoPath, r2Key);
+
+      // 7. Upload ke YouTube Data API v3
+      const ytResult = await uploadToYouTube(
+        tempVideoPath,
+        youtubeTitle,
+        youtubeDescription,
+        youtubeTags
+      );
+      youtubeUrl = ytResult.youtubeUrl;
+
+      // 8. Bagikan Video ke Facebook Page
+      try {
+        const fbResult = await shareToFacebookPage(article.title, article.excerpt, youtubeUrl, article.id);
+        fbStatus = fbResult.success ? 'Success ✅' : `Failed: ${fbResult.error} ❌`;
+      } catch (fbErr) {
+        fbStatus = `Error: ${fbErr.message} ❌`;
+      }
+    } finally {
+      // 9. OTOMATIS Hapus video transit dari Cloudflare R2 (Guarantee Cleanup)
+      try {
+        await deleteFromR2(r2Key);
+      } catch (delErr) {
+        console.warn('⚠️ Gagal menghapus file transit R2:', delErr.message || delErr);
+      }
     }
 
-    // 9. Hapus dari Cloudflare R2 setelah sukses upload YouTube & Facebook
-    await deleteFromR2(r2Key);
-
-    // 10. Kirim Telegram Report
-    await sendTelegramReport({
-      title: youtubeTitle,
-      youtubeUrl,
-      category: article.category,
-      articleId: article.id,
-      fbStatus,
-    });
+    // 10. Kirim Telegram Report jika upload YouTube berhasil
+    if (youtubeUrl) {
+      await sendTelegramReport({
+        title: youtubeTitle,
+        youtubeUrl,
+        category: article.category,
+        articleId: article.id,
+        fbStatus,
+      });
+    }
 
     // Clean up temporary local files
     [tempTtsPath, tempMixedAudioPath, tempBannerPath, tempVideoPath].forEach(f => {
@@ -702,3 +705,4 @@ Musik Latar: Royalty-Free Meditation Instrumental
 }
 
 main();
+

@@ -136,38 +136,24 @@ async function fetchArticleContent(contentR2Path: string): Promise<string> {
   return '';
 }
 
-async function fetchLatestArticle(category: string): Promise<Article> {
-  console.log(`🔍 Searching D1 for category: "${category}"...`);
+async function fetchLatestArticle(): Promise<Article> {
+  console.log('🔍 Searching D1 for the latest published article...');
 
-  // Try category-specific query first
-  let rows = await queryD1(
+  const rows = await queryD1(
     `SELECT id, title, excerpt, category, contentR2Path
      FROM blogs
-     WHERE category = ? AND status = 'published'
+     WHERE status = 'published' OR published = 1
      ORDER BY createdAt DESC
      LIMIT 1`,
-    [category]
+    []
   );
-
-  // Fallback: any latest published article
-  if (rows.length === 0) {
-    console.log(`⚠️  No article for "${category}" — falling back to latest published article.`);
-    rows = await queryD1(
-      `SELECT id, title, excerpt, category, contentR2Path
-       FROM blogs
-       WHERE status = 'published'
-       ORDER BY createdAt DESC
-       LIMIT 1`,
-      []
-    );
-  }
 
   if (rows.length === 0) {
     throw new Error('No published articles found in the D1 database.');
   }
 
   const row = rows[0];
-  console.log(`📝 Found article: "${row.title}" (ID: ${row.id})`);
+  console.log(`📝 Found latest article: "${row.title}" (ID: ${row.id}, Category: ${row.category})`);
 
   // Fetch full HTML content from R2 storage
   const content = row.contentR2Path
@@ -228,13 +214,11 @@ async function main(): Promise<void> {
   let selectedCategory = 'Umum';
 
   try {
-    // ── Step 1: Category rotation ──────────────────────────────────────────────
-    selectedCategory = await getNextCategory();
-    console.log(`\n📂 Step 1 — Category: "${selectedCategory}"`);
-
-    // ── Step 2: Fetch article from D1 ─────────────────────────────────────────
-    console.log('\n📥 Step 2 — Fetching article from Cloudflare D1...');
-    const article = await fetchLatestArticle(selectedCategory);
+    // ── Step 1 & 2: Fetch latest article from D1 ─────────────────────────
+    console.log('\n📥 Step 1 — Fetching latest published article from Cloudflare D1...');
+    const article = await fetchLatestArticle();
+    selectedCategory = article.category;
+    console.log(`📂 Article Category: "${selectedCategory}"`);
 
     // ── Step 3: Text → MP3 ────────────────────────────────────────────────────
     console.log('\n🔊 Step 3 — Generating audio (Edge TTS)...');
