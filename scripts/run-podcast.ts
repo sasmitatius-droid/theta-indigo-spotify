@@ -22,17 +22,25 @@
 
 import * as fs   from 'fs';
 import * as path from 'path';
-import * as dotenv from 'dotenv';
 import * as crypto from 'crypto';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 // ── Load env (local dev uses .env.local, CI uses secrets injected as env vars) ─
 const envFile = path.resolve(process.cwd(), '.env.local');
 if (fs.existsSync(envFile)) {
-  dotenv.config({ path: envFile });
+  const lines = fs.readFileSync(envFile, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const idx = trimmed.indexOf('=');
+      const key = trimmed.slice(0, idx).trim();
+      const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  }
   console.log('📄 Loaded .env.local for local development');
-} else {
-  dotenv.config();
 }
 
 import { getNextCategory, saveLastCategory } from '../src/category-rotator';
