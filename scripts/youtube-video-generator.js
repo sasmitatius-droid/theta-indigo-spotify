@@ -91,6 +91,25 @@ async function queryD1(sql, params = []) {
   return data.result[0]?.results || [];
 }
 
+// Helper: Fetch full article content from R2 via contentR2Path
+// D1 does NOT store content inline — it stores a path to blogs/{id}.json in R2
+async function fetchArticleContentFromR2(contentR2Path) {
+  if (!contentR2Path) return '';
+  try {
+    const res = await s3Client.send(
+      new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: contentR2Path })
+    );
+    const chunks = [];
+    for await (const chunk of res.Body) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString('utf-8');
+    const parsed = JSON.parse(body);
+    return parsed.content || '';
+  } catch (err) {
+    console.warn('⚠️ Gagal mengambil content artikel dari R2:', err.message || err);
+    return '';
+  }
+}
+
 // Helper: Bersihkan Teks HTML dari Konten Artikel
 function stripHtml(html) {
   if (!html) return '';
@@ -653,6 +672,19 @@ async function main() {
     console.log(`\n📌 Artikel Terpilih: [${article.id}] "${article.title}"`);
     console.log(`   Kategori: ${article.category}`);
     console.log(`   Tanggal Dibuat: ${article.createdAt}`);
+
+    // 1b. Fetch full article content dari R2 jika content kosong di D1
+    // D1 hanya menyimpan contentR2Path, bukan content inline
+    if (!article.content && article.contentR2Path) {
+      console.log(`📄 Mengambil isi artikel dari R2: ${article.contentR2Path}...`);
+      article.content = await fetchArticleContentFromR2(article.contentR2Path);
+      console.log(`   ✅ Content dimuat: ${article.content.length} karakter`);
+    }
+    if (!article.content) {
+      // Final fallback: gunakan excerpt jika content tetap kosong
+      article.content = article.excerpt || article.title;
+      console.warn('⚠️ Content artikel kosong, menggunakan excerpt sebagai fallback.');
+    }
 
     // 2. Susun Naskah Narasi (untuk fallback jika MP3 podcast R2 belum ada)
     const narrationScript = prepareNarrationScript(article.title, article.content);
