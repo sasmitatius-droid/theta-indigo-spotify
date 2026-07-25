@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/cron/generate-blog",
-      "schedule": "0 23,11 * * *"
+      "schedule": "0 23 * * *"
     }
   ]
 }
