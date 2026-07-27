@@ -238,7 +238,7 @@ export default function AdminPage() {
   };
 
   // Trigger Podcast Generation or RSS Rebuild
-  const handleTriggerPodcast = async (action: 'generate' | 'rebuild-rss') => {
+  const handleTriggerPodcast = async (action: 'generate' | 'rebuild-rss' | 'github-dispatch') => {
     if (action === 'generate') {
       if (
         !confirm(
@@ -258,7 +258,14 @@ export default function AdminPage() {
         method: 'POST',
         body: JSON.stringify({ action }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { success: false, error: text || `HTTP ${res.status}` };
+      }
+
       if (data.success) {
         setPodcastLog({
           success: true,

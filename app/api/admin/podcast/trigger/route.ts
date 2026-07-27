@@ -24,7 +24,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // 60s timeout for Next.js API routes
+export const maxDuration = 60; // Max duration for Vercel Pro/Hobby
 
 interface D1BlogRow {
   id: string;
@@ -54,37 +54,77 @@ async function ensureCoverArt(): Promise<string> {
   const coverKey = 'podcast/cover.png';
   const coverUrl = `${R2_PUBLIC_URL}/${coverKey}`;
 
-  if (await objectExists(coverKey)) {
-    return coverUrl;
-  }
-
-  const candidates = [
-    path.resolve(process.cwd(), 'assets/logo-indigo-sp.png'),
-    path.resolve(process.cwd(), 'assets/cover.png'),
-    path.resolve(process.cwd(), 'public/logo-indigo-sp.png'),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      const buffer = fs.readFileSync(candidate);
-      await uploadCoverArt(buffer);
+  try {
+    if (await objectExists(coverKey)) {
       return coverUrl;
     }
+
+    const candidates = [
+      path.resolve(process.cwd(), 'assets/logo-indigo-sp.png'),
+      path.resolve(process.cwd(), 'assets/cover.png'),
+      path.resolve(process.cwd(), 'public/logo-indigo-sp.png'),
+    ];
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        const buffer = fs.readFileSync(candidate);
+        await uploadCoverArt(buffer);
+        return coverUrl;
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Cover art check failed:', err);
   }
 
   return coverUrl;
 }
 
-export async function POST(request: Request) {
-  const auth = await verifyAdminRequest(request);
-  if (!auth.allowed) {
-    return NextResponse.json(
-      { error: auth.error || 'Unauthorized' },
-      { status: auth.error?.includes('Forbidden') ? 403 : 401 }
-    );
+async function triggerGitHubWorkflow(): Promise<{ success: boolean; message: string }> {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const owner = 'sasmitatius-droid';
+  const repo = 'theta-indigo-spotify';
+  const workflowId = 'podcast-cron.yml';
+
+  if (!token) {
+    throw new Error('GITHUB_TOKEN tidak ditemukan di environment Vercel.');
   }
 
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowId}/dispatches`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'Theta-Indigo-Admin',
+    },
+    body: JSON.stringify({
+      ref: 'main',
+      inputs: { dry_run: 'false' },
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`GitHub API error ${res.status}: ${errText}`);
+  }
+
+  return {
+    success: true,
+    message: 'Workflow GitHub Actions berhasil dipicu. Episode podcast sedang diproses di cloud runner.',
+  };
+}
+
+export async function POST(request: Request) {
   try {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.allowed) {
+      return NextResponse.json(
+        { success: false, error: auth.error || 'Unauthorized: Akses ditolak' },
+        { status: auth.error?.includes('Forbidden') ? 403 : 401 }
+      );
+    }
+
     let action = 'generate';
     try {
       const body = await request.json();
@@ -112,7 +152,19 @@ export async function POST(request: Request) {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Action 2: Generate Full Podcast Episode + Update RSS
+    // Action 2: Trigger via GitHub Actions dispatch (if requested or fallback)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (action === 'github-dispatch') {
+      const ghRes = await triggerGitHubWorkflow();
+      return NextResponse.json({
+        success: true,
+        action: 'github-dispatch',
+        message: ghRes.message,
+      });
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Action 3: Direct Podcast Generation Pipeline
     // ──────────────────────────────────────────────────────────────────────────
     console.log('🎙️ [Admin] Starting manual podcast generation pipeline...');
 
@@ -127,7 +179,7 @@ export async function POST(request: Request) {
 
     if (!rows || rows.length === 0) {
       return NextResponse.json(
-        { error: 'Tidak ada artikel yang dipublikasikan di D1.' },
+        { success: false, error: 'Tidak ada artikel yang dipublikasikan di D1.' },
         { status: 404 }
       );
     }
@@ -210,7 +262,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Error in /api/admin/podcast/trigger:', error);
     return NextResponse.json(
-      { error: error.message || 'Gagal memproses podcast trigger.' },
+      { success: false, error: error.message || 'Gagal memproses podcast trigger.' },
       { status: 500 }
     );
   }
