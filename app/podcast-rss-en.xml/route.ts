@@ -138,7 +138,7 @@ export async function GET() {
   try {
     const [blogs, r2AudioMap] = await Promise.all([
       queryD1<{ id: string; title: string; excerpt: string; category: string; createdAt: string }>(
-        'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 30',
+        'SELECT id, title, excerpt, category, createdAt FROM blogs WHERE published = 1 OR status = ? ORDER BY createdAt DESC LIMIT 120',
         ['published']
       ),
       getR2PodcastAudioMap(),
