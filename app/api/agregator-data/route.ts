@@ -30,14 +30,12 @@ async function handleAgregatorRequest(request: Request) {
 
     const d1Endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${dbId}/query`;
 
-    // Support optional limit query parameter (default: 30)
+    // Support optional limit query parameter (default: tanpa pembatasan)
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
-    let limitSql = 'LIMIT 30';
-    if (limitParam === 'all') {
-      limitSql = '';
-    } else if (limitParam && !isNaN(Number(limitParam))) {
-      limitSql = `LIMIT ${Math.min(Math.max(1, parseInt(limitParam, 10)), 500)}`;
+    let limitSql = '';
+    if (limitParam && limitParam !== 'all' && !isNaN(Number(limitParam))) {
+      limitSql = `LIMIT ${parseInt(limitParam, 10)}`;
     }
 
     // SQL statements
