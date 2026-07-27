@@ -126,8 +126,9 @@ async function ttsWithVoice(text: string, voice: string): Promise<Buffer> {
   const buffers: Buffer[] = [];
   for (const chunk of chunks) {
     if (!chunk) continue;
-    const readable = tts.toStream(chunk);
-    const audioBuffer = await streamToBuffer(readable);
+    const streamObj = tts.toStream(chunk) as any;
+    const audioStream = streamObj.audioStream || streamObj;
+    const audioBuffer = await streamToBuffer(audioStream);
     if (audioBuffer && audioBuffer.length > 100) {
       buffers.push(audioBuffer);
     }
