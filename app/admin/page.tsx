@@ -1467,30 +1467,11 @@ export default function AdminPage() {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Button
-                        onClick={() => handleTriggerPodcast('generate')}
-                        disabled={isGeneratingPodcast || isRebuildingRss}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium flex items-center justify-center gap-2 py-2.5"
-                      >
-                        {isGeneratingPodcast ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Membuat Podcast MP3...
-                          </>
-                        ) : (
-                          <>
-                            <Music className="w-4 h-4" />
-                            Generate Episode Podcast Baru
-                          </>
-                        )}
-                      </Button>
-
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <Button
                         onClick={() => handleTriggerPodcast('rebuild-rss')}
                         disabled={isGeneratingPodcast || isRebuildingRss}
-                        variant="outline"
-                        className="border-indigo-500/40 bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white font-medium flex items-center justify-center gap-2 py-2.5"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center justify-center gap-2 py-2.5"
                       >
                         {isRebuildingRss ? (
                           <>
@@ -1500,7 +1481,44 @@ export default function AdminPage() {
                         ) : (
                           <>
                             <RefreshCw className="w-4 h-4" />
-                            Rebuild & Refresh Feed RSS XML
+                            📡 Rebuild & Refresh RSS XML
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        onClick={() => handleTriggerPodcast('github-dispatch')}
+                        disabled={isGeneratingPodcast || isRebuildingRss}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium flex items-center justify-center gap-2 py-2.5"
+                      >
+                        {isGeneratingPodcast ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Memicu GitHub Runner...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            🚀 Trigger via GitHub Actions
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        onClick={() => handleTriggerPodcast('generate')}
+                        disabled={isGeneratingPodcast || isRebuildingRss}
+                        variant="outline"
+                        className="border-indigo-500/40 bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white font-medium flex items-center justify-center gap-2 py-2.5"
+                      >
+                        {isGeneratingPodcast ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Membuat MP3...
+                          </>
+                        ) : (
+                          <>
+                            <Music className="w-4 h-4" />
+                            🎙️ Generate TTS (Vercel Direct)
                           </>
                         )}
                       </Button>
