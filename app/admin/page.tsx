@@ -101,6 +101,11 @@ export default function AdminPage() {
   const [isSavingAutoBlog, setIsSavingAutoBlog] = useState(false);
   const [isGeneratingCron, setIsGeneratingCron] = useState(false);
 
+  // Podcast & RSS trigger state
+  const [isGeneratingPodcast, setIsGeneratingPodcast] = useState(false);
+  const [isRebuildingRss, setIsRebuildingRss] = useState(false);
+  const [podcastLog, setPodcastLog] = useState<{ success: boolean; message: string; time?: string } | null>(null);
+
   // Manual Blog with Dynamic Banner state
   const [manualTitle, setManualTitle] = useState('');
   const [manualCategory, setManualCategory] = useState(DEFAULT_BLOG_CATEGORY);
@@ -229,6 +234,56 @@ export default function AdminPage() {
       alert(`Terjadi kesalahan: ${err.message}`);
     } finally {
       setIsGeneratingCron(false);
+    }
+  };
+
+  // Trigger Podcast Generation or RSS Rebuild
+  const handleTriggerPodcast = async (action: 'generate' | 'rebuild-rss') => {
+    if (action === 'generate') {
+      if (
+        !confirm(
+          'Jalankan generator podcast sekarang? Ini akan mengonversi artikel terbaru menjadi audio MP3 (TTS), mengunggah ke R2, dan memperbarui feed RSS XML.'
+        )
+      ) {
+        return;
+      }
+      setIsGeneratingPodcast(true);
+    } else {
+      setIsRebuildingRss(true);
+    }
+
+    setPodcastLog(null);
+    try {
+      const res = await fetchWithAuth('/api/admin/podcast/trigger', {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPodcastLog({
+          success: true,
+          message: data.message,
+          time: new Date().toLocaleTimeString('id-ID'),
+        });
+        alert(`Sukses!\n${data.message}`);
+      } else {
+        setPodcastLog({
+          success: false,
+          message: data.error || 'Terjadi kesalahan.',
+          time: new Date().toLocaleTimeString('id-ID'),
+        });
+        alert(`Gagal: ${data.error || 'Gagal memproses podcast.'}`);
+      }
+    } catch (err: any) {
+      setPodcastLog({
+        success: false,
+        message: err.message,
+        time: new Date().toLocaleTimeString('id-ID'),
+      });
+      alert(`Terjadi kesalahan: ${err.message}`);
+    } finally {
+      setIsGeneratingPodcast(false);
+      setIsRebuildingRss(false);
     }
   };
 
@@ -1357,6 +1412,88 @@ export default function AdminPage() {
                           <>
                             <RefreshCw className="w-4 h-4" />
                             Generate AI Article & Blast Newsletter Now
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Podcast & RSS Automation Card */}
+                <Card className="bg-slate-900 border-indigo-500/20 text-white shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-xl flex items-center gap-2 text-indigo-300">
+                      <Music className="w-5 h-5 text-indigo-400" /> Otomasi RSS Podcast & Audio MP3
+                    </CardTitle>
+                    <CardDescription className="text-slate-400">
+                      Kelola dan pemicu pembuatan episode podcast audio & pembaruan feed RSS XML untuk Spotify.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-4 rounded-xl border border-indigo-500/20 bg-slate-950/60 space-y-2 text-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="text-slate-300 font-medium">Link Feed RSS Podcast:</span>
+                        <a
+                          href="https://www.indigoblueprint.my.id/podcast-rss-id.xml"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-indigo-400 hover:underline font-mono text-xs break-all"
+                        >
+                          https://www.indigoblueprint.my.id/podcast-rss-id.xml
+                        </a>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Otomasi cron berjalan 2x sehari (07:00 & 19:00 WIB). Jika RSS tidak ter-update atau ada kendala, gunakan tombol manual di bawah ini.
+                      </p>
+                    </div>
+
+                    {podcastLog && (
+                      <div
+                        className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                          podcastLog.success
+                            ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-950/50 border border-rose-500/30 text-rose-300'
+                        }`}
+                      >
+                        <span className="font-semibold">[{podcastLog.time}]</span>
+                        <span>{podcastLog.message}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Button
+                        onClick={() => handleTriggerPodcast('generate')}
+                        disabled={isGeneratingPodcast || isRebuildingRss}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium flex items-center justify-center gap-2 py-2.5"
+                      >
+                        {isGeneratingPodcast ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Membuat Podcast MP3...
+                          </>
+                        ) : (
+                          <>
+                            <Music className="w-4 h-4" />
+                            Generate Episode Podcast Baru
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        onClick={() => handleTriggerPodcast('rebuild-rss')}
+                        disabled={isGeneratingPodcast || isRebuildingRss}
+                        variant="outline"
+                        className="border-indigo-500/40 bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white font-medium flex items-center justify-center gap-2 py-2.5"
+                      >
+                        {isRebuildingRss ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Memperbarui RSS...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4" />
+                            Rebuild & Refresh Feed RSS XML
                           </>
                         )}
                       </Button>
